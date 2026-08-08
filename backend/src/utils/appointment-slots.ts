@@ -1,12 +1,10 @@
-import { AppointmentStatus } from "@prisma/client";
-
 import { prisma } from "../config/prisma.js";
 
-const ACTIVE_APPOINTMENT_STATUSES: AppointmentStatus[] = [
-  AppointmentStatus.Pending,
-  AppointmentStatus.Confirmed,
-  AppointmentStatus.Rescheduled,
-];
+const ACTIVE_APPOINTMENT_STATUSES = [
+  "Pending",
+  "Confirmed",
+  "Rescheduled",
+] as const;
 
 function buildSlotDate(baseDate: Date, hour: number): Date {
   const date = new Date(baseDate);

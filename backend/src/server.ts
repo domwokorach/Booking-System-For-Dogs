@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 
 import app from "./app.js";
 import { env } from "./config/env.js";
+import { prisma } from "./config/prisma.js";
 
 const httpServer = createServer(app);
 
@@ -20,6 +21,16 @@ io.on("connection", (socket) => {
 
 app.set("io", io);
 
-httpServer.listen(env.PORT, () => {
-  console.log(`Backend API listening on port ${env.PORT}`);
-});
+async function bootstrap() {
+  try {
+    await prisma.$connect();
+    httpServer.listen(env.PORT, () => {
+      console.log(`Backend API listening on port ${env.PORT}`);
+    });
+  } catch (error) {
+    console.error("Failed to connect to the database. Check DATABASE_URL and ensure PostgreSQL is running.", error);
+    process.exit(1);
+  }
+}
+
+bootstrap();

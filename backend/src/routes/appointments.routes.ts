@@ -1,4 +1,3 @@
-import { AppointmentStatus } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 
@@ -83,7 +82,7 @@ router.post("/", async (req, res, next) => {
         dateTime: body.dateTime,
         service: body.service,
         notes: body.notes,
-        status: AppointmentStatus.Pending,
+        status: "Pending",
       },
       include: {
         user: true,
@@ -189,7 +188,7 @@ router.patch("/:id/reschedule", async (req, res, next) => {
         dateTime: body.dateTime,
         rescheduledFrom: existing.dateTime,
         notes: body.notes ?? existing.notes,
-        status: AppointmentStatus.Rescheduled,
+        status: "Rescheduled",
       },
       include: {
         user: true,
@@ -240,7 +239,7 @@ router.patch("/:id/confirm", async (req, res, next) => {
     const updated = await prisma.appointment.update({
       where: { id: appointmentId },
       data: {
-        status: AppointmentStatus.Confirmed,
+        status: "Confirmed",
         confirmedAt: new Date(),
       },
       include: {
@@ -288,7 +287,7 @@ router.patch("/:id/cancel", async (req, res, next) => {
     const updated = await prisma.appointment.update({
       where: { id: appointmentId },
       data: {
-        status: AppointmentStatus.Cancelled,
+        status: "Cancelled",
         cancelledAt: new Date(),
       },
       include: {
