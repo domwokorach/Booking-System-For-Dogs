@@ -1,0 +1,405 @@
+import { AppointmentStatus } from "@prisma/client";
+import { Router } from "express";
+import { z } from "zod";
+
+import { prisma } from "../config/prisma.js";
+import { requireAuth } from "../middlewares/auth.js";
+import {
+  sendBookingCancellationEmail,
+  sendBookingConfirmationEmail,
+  sendBookingUpdateEmail,
+} from "../services/email.service.js";
+import {
+  getAvailableAppointmentTimes,
+  isSlotAvailable,
+} from "../utils/appointment-slots.js";
+import { HttpError } from "../utils/http-error.js";
+
+const router = Router();
+
+const createAppointmentSchema = z.object({
+  dateTime: z.coerce.date(),
+  service: z.string().min(1).optional(),
+  notes: z.string().max(2000).optional(),
+});
+
+const rescheduleSchema = z.object({
+  dateTime: z.coerce.date(),
+  notes: z.string().max(2000).optional(),
+});
+
+const updateAppointmentSchema = z.object({
+  service: z.string().min(1).optional(),
+  notes: z.string().max(2000).optional(),
+});
+
+const dateQuerySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+router.get("/available", async (req, res, next) => {
+  try {
+    const { date } = dateQuerySchema.parse(req.query);
+    const parsedDate = new Date(`${date}T00:00:00.000Z`);
+
+    const slots = await getAvailableAppointmentTimes(parsedDate);
+
+    return res.json({
+      date,
+      availableTimes: slots,
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.use(requireAuth);
+
+router.get("/mine", async (req, res, next) => {
+  try {
+    const appointments = await prisma.appointment.findMany({
+      where: { userId: req.user!.userId },
+      orderBy: { dateTime: "asc" },
+    });
+
+    return res.json(appointments);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/", async (req, res, next) => {
+  try {
+    const body = createAppointmentSchema.parse(req.body);
+
+    const available = await isSlotAvailable(body.dateTime);
+    if (!available) {
+      throw new HttpError(409, "This appointment slot is already booked.");
+    }
+
+    const appointment = await prisma.appointment.create({
+      data: {
+        userId: req.user!.userId,
+        dateTime: body.dateTime,
+        service: body.service,
+        notes: body.notes,
+        status: AppointmentStatus.Pending,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    // Automatic booking notification when appointment is created.
+    await sendBookingConfirmationEmail({
+      to: appointment.user.email,
+      firstName: appointment.user.firstName,
+      appointmentDateTime: appointment.dateTime,
+      status: appointment.status,
+    });
+
+    req.app.get("io").emit("appointments:created", {
+      appointmentId: appointment.id,
+      dateTime: appointment.dateTime,
+      status: appointment.status,
+    });
+
+    return res.status(201).json(appointment);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch("/:id", async (req, res, next) => {
+  try {
+    const body = updateAppointmentSchema.parse(req.body);
+    const appointmentId = req.params.id;
+
+    const existing = await prisma.appointment.findFirst({
+      where: {
+        id: appointmentId,
+        userId: req.user!.userId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!existing) {
+      throw new HttpError(404, "Appointment not found.");
+    }
+
+    const updated = await prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        service: body.service,
+        notes: body.notes,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    await sendBookingUpdateEmail({
+      to: updated.user.email,
+      firstName: updated.user.firstName,
+      appointmentDateTime: updated.dateTime,
+      status: updated.status,
+    });
+
+    req.app.get("io").emit("appointments:updated", {
+      appointmentId: updated.id,
+      dateTime: updated.dateTime,
+      status: updated.status,
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch("/:id/reschedule", async (req, res, next) => {
+  try {
+    const body = rescheduleSchema.parse(req.body);
+    const appointmentId = req.params.id;
+
+    const existing = await prisma.appointment.findFirst({
+      where: {
+        id: appointmentId,
+        userId: req.user!.userId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!existing) {
+      throw new HttpError(404, "Appointment not found.");
+    }
+
+    const available = await isSlotAvailable(body.dateTime, appointmentId);
+    if (!available) {
+      throw new HttpError(409, "The requested time is not available.");
+    }
+
+    const updated = await prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        dateTime: body.dateTime,
+        rescheduledFrom: existing.dateTime,
+        notes: body.notes ?? existing.notes,
+        status: AppointmentStatus.Rescheduled,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    await sendBookingUpdateEmail({
+      to: updated.user.email,
+      firstName: updated.user.firstName,
+      appointmentDateTime: updated.dateTime,
+      status: updated.status,
+    });
+
+    req.app.get("io").emit("appointments:rescheduled", {
+      appointmentId: updated.id,
+      dateTime: updated.dateTime,
+      status: updated.status,
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch("/:id/confirm", async (req, res, next) => {
+  try {
+    const appointmentId = req.params.id;
+
+    const existing = await prisma.appointment.findFirst({
+      where: {
+        id: appointmentId,
+        userId: req.user!.userId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!existing) {
+      throw new HttpError(404, "Appointment not found.");
+    }
+
+    if (existing.status === AppointmentStatus.Cancelled) {
+      throw new HttpError(400, "Cancelled appointments cannot be confirmed.");
+    }
+
+    const updated = await prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        status: AppointmentStatus.Confirmed,
+        confirmedAt: new Date(),
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    await sendBookingConfirmationEmail({
+      to: updated.user.email,
+      firstName: updated.user.firstName,
+      appointmentDateTime: updated.dateTime,
+      status: updated.status,
+    });
+
+    req.app.get("io").emit("appointments:confirmed", {
+      appointmentId: updated.id,
+      dateTime: updated.dateTime,
+      status: updated.status,
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch("/:id/cancel", async (req, res, next) => {
+  try {
+    const appointmentId = req.params.id;
+
+    const existing = await prisma.appointment.findFirst({
+      where: {
+        id: appointmentId,
+        userId: req.user!.userId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!existing) {
+      throw new HttpError(404, "Appointment not found.");
+    }
+
+    const updated = await prisma.appointment.update({
+      where: { id: appointmentId },
+      data: {
+        status: AppointmentStatus.Cancelled,
+        cancelledAt: new Date(),
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    await sendBookingCancellationEmail({
+      to: updated.user.email,
+      firstName: updated.user.firstName,
+      appointmentDateTime: updated.dateTime,
+      status: updated.status,
+    });
+
+    req.app.get("io").emit("appointments:cancelled", {
+      appointmentId: updated.id,
+      dateTime: updated.dateTime,
+      status: updated.status,
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/:id/email/confirmation", async (req, res, next) => {
+  try {
+    const appointment = await prisma.appointment.findFirst({
+      where: {
+        id: req.params.id,
+        userId: req.user!.userId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!appointment) {
+      throw new HttpError(404, "Appointment not found.");
+    }
+
+    await sendBookingConfirmationEmail({
+      to: appointment.user.email,
+      firstName: appointment.user.firstName,
+      appointmentDateTime: appointment.dateTime,
+      status: appointment.status,
+    });
+
+    return res.json({ message: "Booking confirmation email sent." });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/:id/email/update", async (req, res, next) => {
+  try {
+    const appointment = await prisma.appointment.findFirst({
+      where: {
+        id: req.params.id,
+        userId: req.user!.userId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!appointment) {
+      throw new HttpError(404, "Appointment not found.");
+    }
+
+    await sendBookingUpdateEmail({
+      to: appointment.user.email,
+      firstName: appointment.user.firstName,
+      appointmentDateTime: appointment.dateTime,
+      status: appointment.status,
+    });
+
+    return res.json({ message: "Booking update email sent." });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/:id/email/cancellation", async (req, res, next) => {
+  try {
+    const appointment = await prisma.appointment.findFirst({
+      where: {
+        id: req.params.id,
+        userId: req.user!.userId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!appointment) {
+      throw new HttpError(404, "Appointment not found.");
+    }
+
+    await sendBookingCancellationEmail({
+      to: appointment.user.email,
+      firstName: appointment.user.firstName,
+      appointmentDateTime: appointment.dateTime,
+      status: appointment.status,
+    });
+
+    return res.json({ message: "Booking cancellation email sent." });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+export default router;

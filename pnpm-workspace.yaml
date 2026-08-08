@@ -1,5 +1,6 @@
 packages:
   - '.'
+  - 'backend'
 supportedArchitectures:
   os:
     - linux
