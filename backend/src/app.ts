@@ -18,6 +18,20 @@ app.use(
 );
 app.use(express.json({ limit: "1mb" }));
 
+app.get("/", (_req, res) => {
+  res.json({
+    ok: true,
+    message: "Pawside booking API is running.",
+    endpoints: {
+      health: "/health",
+      auth: "/api/auth",
+      appointments: "/api/appointments",
+      users: "/api/users",
+      files: "/api/files",
+    },
+  });
+});
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });

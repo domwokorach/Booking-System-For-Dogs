@@ -37,7 +37,9 @@ export async function getAvailableAppointmentTimes(date: Date) {
     },
   });
 
-  const taken = new Set(appointments.map((a: { dateTime: Date }) => a.dateTime.getTime()));
+  const taken = new Set(
+    appointments.map((appointment: { dateTime: Date }) => appointment.dateTime.getTime()),
+  );
 
   return allSlots
     .filter((slot) => !taken.has(slot.getTime()))

@@ -21,12 +21,32 @@ io.on("connection", (socket) => {
 
 app.set("io", io);
 
+function startServer(port: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onError = (error: NodeJS.ErrnoException) => {
+      if (error.code === "EADDRINUSE") {
+        console.error(`Port ${port} is already in use. Stop the other backend process or set PORT to a different value.`);
+        reject(error);
+        return;
+      }
+
+      console.error("Failed to start the backend server.", error);
+      reject(error);
+    };
+
+    httpServer.once("error", onError);
+    httpServer.listen(port, () => {
+      httpServer.off("error", onError);
+      console.log(`Backend API listening on port ${port}`);
+      resolve();
+    });
+  });
+}
+
 async function bootstrap() {
   try {
     await prisma.$connect();
-    httpServer.listen(env.PORT, () => {
-      console.log(`Backend API listening on port ${env.PORT}`);
-    });
+    await startServer(env.PORT);
   } catch (error) {
     console.error("Failed to connect to the database. Check DATABASE_URL and ensure PostgreSQL is running.", error);
     process.exit(1);
