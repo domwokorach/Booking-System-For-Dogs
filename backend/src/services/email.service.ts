@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import type { SentMessageInfo } from "nodemailer";
 
 import { env } from "../config/env.js";
 

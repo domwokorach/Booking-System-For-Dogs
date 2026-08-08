@@ -232,7 +232,7 @@ router.patch("/:id/confirm", async (req, res, next) => {
       throw new HttpError(404, "Appointment not found.");
     }
 
-    if (existing.status === AppointmentStatus.Cancelled) {
+    if (existing.status === "Cancelled") {
       throw new HttpError(400, "Cancelled appointments cannot be confirmed.");
     }
 

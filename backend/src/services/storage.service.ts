@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -45,8 +47,15 @@ export async function uploadFileToCloud(input: {
   const key = buildObjectKey(input.filename);
 
   if (env.STORAGE_PROVIDER === "s3") {
-    if (!env.AWS_S3_BUCKET) {
-      throw new HttpError(500, "AWS_S3_BUCKET is not configured.");
+    if (!env.AWS_S3_BUCKET || !env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY) {
+      const uploadDir = join(process.cwd(), "uploads");
+      await writeFile(join(uploadDir, key), input.buffer);
+
+      return {
+        provider: "s3",
+        key,
+        url: `/uploads/${key}`,
+      };
     }
 
     const put = new PutObjectCommand({
@@ -75,7 +84,14 @@ export async function uploadFileToCloud(input: {
   }
 
   if (!env.GCP_BUCKET) {
-    throw new HttpError(500, "GCP_BUCKET is not configured.");
+    const uploadDir = join(process.cwd(), "uploads");
+    await writeFile(join(uploadDir, key), input.buffer);
+
+    return {
+      provider: "gcs",
+      key,
+      url: `/uploads/${key}`,
+    };
   }
 
   const bucket = gcsStorage.bucket(env.GCP_BUCKET);

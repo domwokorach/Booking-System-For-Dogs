@@ -1,10 +1,10 @@
 import { prisma } from "../config/prisma.js";
 
-const ACTIVE_APPOINTMENT_STATUSES = [
+const ACTIVE_APPOINTMENT_STATUSES: Array<"Pending" | "Confirmed" | "Rescheduled"> = [
   "Pending",
   "Confirmed",
   "Rescheduled",
-] as const;
+];
 
 function buildSlotDate(baseDate: Date, hour: number): Date {
   const date = new Date(baseDate);
@@ -37,7 +37,7 @@ export async function getAvailableAppointmentTimes(date: Date) {
     },
   });
 
-  const taken = new Set(appointments.map((a) => a.dateTime.getTime()));
+  const taken = new Set(appointments.map((a: { dateTime: Date }) => a.dateTime.getTime()));
 
   return allSlots
     .filter((slot) => !taken.has(slot.getTime()))
