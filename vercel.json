@@ -6,6 +6,8 @@
     },
     "backend": {
       "root": "backend",
+      "framework": "express",
+      "entrypoint": "api/[...route].ts",
       "buildCommand": "pnpm run prisma:generate && pnpm run build"
     }
   },
