@@ -307,6 +307,8 @@ router.patch("/:id/cancel", async (req, res, next) => {
     await sendBookingCancellationEmail({
       to: updated.user.email,
       firstName: updated.user.firstName,
+      bookingId: updated.id,
+      service: updated.service,
       appointmentDateTime: updated.dateTime,
       status: toApiStatus(updated.status),
     });

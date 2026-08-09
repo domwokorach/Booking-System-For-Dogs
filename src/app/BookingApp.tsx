@@ -228,6 +228,10 @@ export default function BookingApp() {
   }, []);
 
   useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [currentView]);
+
+  useEffect(() => {
     if (!token) {
       return;
     }
@@ -350,9 +354,16 @@ export default function BookingApp() {
         body: JSON.stringify(payload),
       });
 
-      const data = await response.json();
+      const contentType = response.headers.get("content-type") ?? "";
+      const data = contentType.includes("application/json")
+        ? await response.json()
+        : null;
       if (!response.ok) {
-        throw new Error(data.message || "Unable to complete authentication.");
+        throw new Error(data?.message || "Unable to reach the authentication service. Please try again.");
+      }
+
+      if (!data?.user || !data?.token) {
+        throw new Error("The authentication service returned an invalid response.");
       }
 
       persistSession(data.user as UserProfile, data.token as string);

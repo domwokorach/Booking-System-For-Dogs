@@ -99,9 +99,9 @@ export async function sendBookingUpdateEmail(data: BookingEmailData) {
 export async function sendBookingCancellationEmail(data: BookingEmailData) {
   await sendMailSafely({
     from: env.EMAIL_FROM,
-    to: data.to,
+    to: resolveBookingRecipient(data.to),
     subject: "Booking cancelled",
-    text: `Hi ${data.firstName}, your booking for ${formatDateTime(data.appointmentDateTime)} has been cancelled.`,
+    text: `Hi ${data.firstName},\n\nYour booking has been cancelled.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nSelected service: ${formatService(data.service)}\nAppointment date: ${formatDate(data.appointmentDateTime)}\nAppointment time: ${formatTime(data.appointmentDateTime)}\nBooking status: ${data.status}.`,
   });
 }
 

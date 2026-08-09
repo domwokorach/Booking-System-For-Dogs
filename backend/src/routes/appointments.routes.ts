@@ -36,6 +36,25 @@ const dateQuerySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
+async function resolveActiveService(serviceId: string) {
+  const service = await prisma.service.findFirst({
+    where: {
+      id: serviceId,
+      active: true,
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  if (!service) {
+    throw new HttpError(404, "Service not found.");
+  }
+
+  return service;
+}
+
 router.get("/available", async (req, res, next) => {
   try {
     const { date } = dateQuerySchema.parse(req.query);
@@ -70,6 +89,7 @@ router.get("/mine", async (req, res, next) => {
 router.post("/", async (req, res, next) => {
   try {
     const body = createAppointmentSchema.parse(req.body);
+    const service = body.service ? await resolveActiveService(body.service) : null;
 
     const available = await isSlotAvailable(body.dateTime);
     if (!available) {
@@ -80,13 +100,15 @@ router.post("/", async (req, res, next) => {
       data: {
         userId: req.user!.userId,
         dateTime: body.dateTime,
-        service: body.service,
+        serviceId: service?.id,
+        service: service?.name,
         notes: body.notes,
         status: "Confirmed",
         confirmedAt: new Date(),
       },
       include: {
         user: true,
+        serviceRef: true,
       },
     });
 
@@ -95,7 +117,7 @@ router.post("/", async (req, res, next) => {
       to: appointment.user.email,
       firstName: appointment.user.firstName,
       bookingId: appointment.id,
-      service: appointment.service,
+      service: appointment.serviceRef?.name ?? appointment.service,
       appointmentDateTime: appointment.dateTime,
       status: appointment.status,
     });
@@ -116,6 +138,7 @@ router.patch("/:id", async (req, res, next) => {
   try {
     const body = updateAppointmentSchema.parse(req.body);
     const appointmentId = req.params.id;
+    const service = body.service ? await resolveActiveService(body.service) : null;
 
     const existing = await prisma.appointment.findFirst({
       where: {
@@ -134,11 +157,13 @@ router.patch("/:id", async (req, res, next) => {
     const updated = await prisma.appointment.update({
       where: { id: appointmentId },
       data: {
-        service: body.service,
+        serviceId: body.service ? service?.id : undefined,
+        service: body.service ? service?.name : undefined,
         notes: body.notes,
       },
       include: {
         user: true,
+        serviceRef: true,
       },
     });
 
@@ -303,6 +328,8 @@ router.patch("/:id/cancel", async (req, res, next) => {
     await sendBookingCancellationEmail({
       to: updated.user.email,
       firstName: updated.user.firstName,
+      bookingId: updated.id,
+      service: updated.service,
       appointmentDateTime: updated.dateTime,
       status: updated.status,
     });
@@ -398,6 +425,8 @@ router.post("/:id/email/cancellation", async (req, res, next) => {
     await sendBookingCancellationEmail({
       to: appointment.user.email,
       firstName: appointment.user.firstName,
+      bookingId: appointment.id,
+      service: appointment.service,
       appointmentDateTime: appointment.dateTime,
       status: appointment.status,
     });
