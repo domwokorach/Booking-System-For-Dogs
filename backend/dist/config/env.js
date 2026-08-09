@@ -17,6 +17,7 @@ const rawEnvSchema = z.object({
     SMTP_PORT: z.coerce.number().default(2525),
     SMTP_USER: z.string().default(""),
     SMTP_PASS: z.string().default(""),
+    RESEND_API_KEY: z.string().default(""),
     EMAIL_FROM: z.string().email().default("noreply@pawside.local"),
     STORAGE_PROVIDER: z.enum(["s3", "gcs"]).default("s3"),
     AWS_REGION: z.string().default("us-east-1"),

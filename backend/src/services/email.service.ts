@@ -1,23 +1,36 @@
-import nodemailer from "nodemailer";
-
 import { env } from "../config/env.js";
 
-const hasSmtpCredentials =
-  Boolean(env.SMTP_HOST) && Boolean(env.SMTP_USER) && Boolean(env.SMTP_PASS);
+const resendApiKey = env.RESEND_API_KEY?.trim();
 
-const transporter = hasSmtpCredentials
-  ? nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      secure: env.SMTP_PORT === 465,
-      auth: {
-        user: env.SMTP_USER,
-        pass: env.SMTP_PASS,
+async function sendMailSafely(mail: { from: string; to: string; subject: string; text: string }) {
+  if (!resendApiKey) {
+    console.warn("RESEND_API_KEY is not configured. Skipping email send.");
+    return;
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
       },
-    })
-  : nodemailer.createTransport({
-      jsonTransport: true,
+      body: JSON.stringify({
+        from: mail.from,
+        to: [mail.to],
+        subject: mail.subject,
+        text: mail.text,
+      }),
     });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(`Resend API error ${response.status}: ${errorData}`);
+    }
+  } catch (error) {
+    console.error("Email delivery failed.", error);
+  }
+}
 
 type BookingEmailData = {
   to: string;
@@ -25,14 +38,6 @@ type BookingEmailData = {
   appointmentDateTime: Date;
   status: string;
 };
-
-async function sendMailSafely(mail: Parameters<typeof transporter.sendMail>[0]) {
-  try {
-    await transporter.sendMail(mail);
-  } catch (error) {
-    console.error("Email delivery failed.", error);
-  }
-}
 
 function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("en-US", {

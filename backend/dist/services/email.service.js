@@ -1,22 +1,28 @@
-import nodemailer from "nodemailer";
 import { env } from "../config/env.js";
-const hasSmtpCredentials = Boolean(env.SMTP_HOST) && Boolean(env.SMTP_USER) && Boolean(env.SMTP_PASS);
-const transporter = hasSmtpCredentials
-    ? nodemailer.createTransport({
-        host: env.SMTP_HOST,
-        port: env.SMTP_PORT,
-        secure: env.SMTP_PORT === 465,
-        auth: {
-            user: env.SMTP_USER,
-            pass: env.SMTP_PASS,
-        },
-    })
-    : nodemailer.createTransport({
-        jsonTransport: true,
-    });
+const resendApiKey = env.RESEND_API_KEY?.trim();
 async function sendMailSafely(mail) {
+    if (!resendApiKey) {
+        console.warn("RESEND_API_KEY is not configured. Skipping email send.");
+        return;
+    }
     try {
-        await transporter.sendMail(mail);
+        const response = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${resendApiKey}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                from: mail.from,
+                to: [mail.to],
+                subject: mail.subject,
+                text: mail.text,
+            }),
+        });
+        if (!response.ok) {
+            const errorData = await response.text();
+            throw new Error(`Resend API error ${response.status}: ${errorData}`);
+        }
     }
     catch (error) {
         console.error("Email delivery failed.", error);
