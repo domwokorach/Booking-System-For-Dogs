@@ -5,17 +5,17 @@
 Start PostgreSQL locally with Docker:
 
 ```bash
-npm run db:start
+pnpm run db:start
 ```
 
 Run Prisma migrations:
 
 ```bash
-npm run prisma:migrate
+pnpm run prisma:migrate
 ```
 
 Start the API:
 
 ```bash
-npm run dev
+pnpm run dev
 ```
