@@ -1,120 +1,144 @@
-# [Project Name]
+# Booking System for Dogs
 
-Short one-paragraph description of what this project does and who it is for.
-
-## Table of Contents
-
-- [\[Project Name\]](#project-name)
-  - [Table of Contents](#table-of-contents)
-  - [Overview](#overview)
-  - [Features](#features)
-  - [Tech Stack](#tech-stack)
-  - [Getting Started](#getting-started)
-    - [Prerequisites](#prerequisites)
-    - [Installation](#installation)
-    - [Run Locally](#run-locally)
-  - [Available Scripts](#available-scripts)
-  - [Project Structure](#project-structure)
-  - [Environment Variables](#environment-variables)
-  - [Testing](#testing)
-  - [Deployment](#deployment)
-  - [Contributing](#contributing)
-  - [License](#license)
+Quick-start guide for the dog booking app. The frontend lets customers browse availability and manage appointments, while the backend exposes an Express API backed by Prisma and PostgreSQL.
 
 ## Overview
 
-Explain the project goals, problem it solves, and key use cases.
+This repository contains:
+
+- A Vite + React frontend in `src/`
+- An Express + Prisma backend in `backend/`
+- Docker configuration for PostgreSQL and the backend API
+
+For the fuller project documentation, see `README.md`.
 
 ## Features
 
-- [Feature 1]
-- [Feature 2]
-- [Feature 3]
+- User sign-up and login
+- Appointment booking and status tracking
+- Appointment rescheduling and cancellation
+- File upload support through cloud storage providers
+- Realtime connection setup with Socket.IO
 
 ## Tech Stack
 
-- Frontend: [e.g., React, Vite, TypeScript]
-- UI: [e.g., Tailwind CSS, shadcn/ui]
-- Package Manager: [e.g., pnpm]
+- Frontend: React, Vite
+- Styling: Tailwind CSS, shadcn/ui
+- Backend: Node.js, Express, TypeScript
+- ORM: Prisma
+- Database: PostgreSQL
+- Containers: Docker Compose
 
-## Getting Started
+## Prerequisites
 
-### Prerequisites
+- Node.js 20 or newer
+- npm
+- Docker Desktop
 
-- [Node.js version]
-- [pnpm/npm/yarn]
+## Quick Start
 
-### Installation
-
-```bash
-# clone repo
-git clone [repository-url]
-
-# enter project directory
-cd [project-directory]
-
-# install dependencies
-pnpm install
-```
-
-### Run Locally
+Install frontend dependencies from the repository root:
 
 ```bash
-pnpm dev
+npm install
 ```
 
-Open <http://localhost:5173> in your browser.
+Create the backend environment file:
 
-## Available Scripts
+```bash
+cd backend
+cp .env.example .env
+```
 
-- `pnpm dev` - Start local dev server
-- `pnpm build` - Build for production
-- `pnpm preview` - Preview production build locally
-- `pnpm lint` - Run lint checks
+Start PostgreSQL and the backend with Docker:
+
+```bash
+cd backend
+docker compose up --build
+```
+
+In a separate terminal, start the frontend from the repository root:
+
+```bash
+npm run dev
+```
+
+Default local URLs:
+
+- Frontend: <http://localhost:5173>
+- Backend API: <http://localhost:4000>
+- Health check: <http://localhost:4000/health>
+
+## Local Development
+
+Run the backend without Docker after PostgreSQL is available:
+
+```bash
+cd backend
+npm install
+npm run prisma:generate
+npm run prisma:migrate
+npm run dev
+```
+
+## Environment Variables
+
+Backend environment variables live in `backend/.env`.
+
+Important values:
+
+- `DATABASE_URL`
+- `PORT`
+- `CLIENT_ORIGIN`
+- `JWT_SECRET`
+- `JWT_EXPIRES_IN`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USER`
+- `SMTP_PASS`
+- `EMAIL_FROM`
+- `STORAGE_PROVIDER`
+
+Optional cloud storage settings:
+
+- `AWS_REGION`
+- `AWS_S3_BUCKET`
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `GCP_PROJECT_ID`
+- `GCP_BUCKET`
+- `GCP_KEY_FILE`
+
+## Scripts
+
+Repository root:
+
+- `npm run dev` - start the frontend dev server
+- `npm run build` - build the frontend
+
+Backend:
+
+- `npm run dev` - start the backend in watch mode
+- `npm run build` - compile the backend
+- `npm run start` - run the compiled backend
+- `npm run prisma:generate` - generate the Prisma client
+- `npm run prisma:migrate` - apply development migrations
+- `npm run db:start` - start PostgreSQL with Docker Compose
+- `npm run db:stop` - stop Docker Compose services
 
 ## Project Structure
 
 ```text
-src/
-  app/
-    components/
-  styles/
+.
+├── backend/        # Express API, Prisma schema, Docker setup
+├── src/            # Frontend application
+├── tests/          # Frontend utility tests
+├── README.md       # Full project documentation
+└── READEME.md      # Quick-start guide
 ```
 
-Add a short description for important directories.
+## Notes
 
-## Environment Variables
-
-Create a `.env` file in the project root:
-
-```env
-# Example
-VITE_API_BASE_URL=http://localhost:3000
-```
-
-Document each variable:
-
-- `VITE_API_BASE_URL` - Base URL for API calls.
-
-## Testing
-
-Explain how to run tests:
-
-```bash
-pnpm test
-```
-
-## Deployment
-
-Describe deployment process and required config.
-
-## Contributing
-
-1. Fork the repository.
-2. Create a feature branch.
-3. Commit your changes.
-4. Open a pull request.
-
-## License
-
-[MIT](LICENSE) or your preferred license.
+- The Docker Compose file is in `backend/docker-compose.yml`, not `project/`.
+- The backend listens on port `4000` by default.
+- Do not commit `backend/.env`.
