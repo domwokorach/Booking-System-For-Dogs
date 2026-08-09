@@ -35,6 +35,7 @@ import {
 } from "date-fns";
 import { io } from "socket.io-client";
 import { getStatusStyles } from "./lib/booking-status";
+import { formatSlotLabel, resolveAppointmentDateTime } from "./lib/booking-time";
 
 type ServiceId = "grooming" | "training" | "daycare" | "boarding";
 type AuthMode = "login" | "register";
@@ -156,20 +157,6 @@ function buildCalendarDays(month: Date): Date[] {
 
 function isDateDisabled(date: Date): boolean {
   return isBefore(startOfDay(date), startOfDay(new Date())) || isSunday(date);
-}
-
-function parseSlotToDate(date: Date, slot: string): Date {
-  const [timePart, meridiem] = slot.split(" ");
-  let [hours, minutes] = timePart.split(":").map(Number);
-  if (meridiem === "PM" && hours < 12) {
-    hours += 12;
-  }
-  if (meridiem === "AM" && hours === 12) {
-    hours = 0;
-  }
-  const next = new Date(date);
-  next.setHours(hours, minutes, 0, 0);
-  return next;
 }
 
 function formatAppointmentDate(value: string): string {
@@ -405,7 +392,7 @@ export default function BookingApp() {
     setFeedback(null);
 
     try {
-      const appointmentDateTime = parseSlotToDate(selectedDate, booking.time).toISOString();
+      const appointmentDateTime = resolveAppointmentDateTime(selectedDate, booking.time);
       const response = await fetch(`${API_BASE}/api/appointments`, {
         method: "POST",
         headers: {
@@ -505,7 +492,7 @@ export default function BookingApp() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          dateTime: parseSlotToDate(rescheduleDate, rescheduleTime).toISOString(),
+          dateTime: resolveAppointmentDateTime(rescheduleDate, rescheduleTime),
         }),
       });
       const data = await response.json();
@@ -716,7 +703,7 @@ export default function BookingApp() {
                               <input type="date" value={rescheduleDate ? format(rescheduleDate, "yyyy-MM-dd") : ""} onChange={(event) => setRescheduleDate(new Date(event.target.value))} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" />
                               <div className="mt-3 grid grid-cols-2 gap-2">
                                 {rescheduleSlots.length === 0 ? <p className="col-span-2 text-sm text-muted-foreground">Choose a date to see available times.</p> : rescheduleSlots.map((slot) => (
-                                  <button key={slot} onClick={() => setRescheduleTime(slot)} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${rescheduleTime === slot ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background"}`}>{slot}</button>
+                                  <button key={slot} onClick={() => setRescheduleTime(slot)} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${rescheduleTime === slot ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background"}`}>{formatSlotLabel(slot)}</button>
                                 ))}
                               </div>
                               <div className="mt-3 flex gap-2">
@@ -782,7 +769,7 @@ export default function BookingApp() {
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             {availableSlots.length === 0 ? <p className="col-span-2 text-sm text-muted-foreground">No slots available for this day.</p> : availableSlots.map((slot) => (
-                              <button key={slot} onClick={() => handleTimeSelect(slot)} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${booking.time === slot ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background"}`}>{slot}</button>
+                              <button key={slot} onClick={() => handleTimeSelect(slot)} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${booking.time === slot ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background"}`}>{formatSlotLabel(slot)}</button>
                             ))}
                           </div>
                           <form onSubmit={handleBookingSubmit} className="space-y-3">
@@ -917,7 +904,7 @@ export default function BookingApp() {
                           <div className="mt-5">
                             <div className="grid grid-cols-2 gap-2">
                               {availableSlots.length === 0 ? <p className="col-span-2 text-sm text-muted-foreground">No slots available for this day.</p> : availableSlots.map((slot) => (
-                                <button key={slot} onClick={() => handleTimeSelect(slot)} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${booking.time === slot ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background"}`}>{slot}</button>
+                                <button key={slot} onClick={() => handleTimeSelect(slot)} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${booking.time === slot ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background"}`}>{formatSlotLabel(slot)}</button>
                               ))}
                             </div>
                             <button onClick={() => setCurrentView("dashboard")} className="mt-4 rounded-xl border border-border px-4 py-3 text-sm font-semibold">Open dashboard to finish booking</button>
