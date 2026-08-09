@@ -142,3 +142,4 @@ Backend:
 - The Docker Compose file is in `backend/docker-compose.yml`, not `project/`.
 - The backend listens on port `4000` by default.
 - Do not commit `backend/.env`.
+
