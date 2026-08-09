@@ -1,0 +1,14 @@
+{
+  "region": "eu-central-1",
+  "app": {
+    "name": "backend",
+    "root": "backend",
+    "framework": "bun",
+    "entry": "src/server.ts",
+    "httpPort": 3000,
+    "build": {
+      "command": "pnpm run build",
+      "outputDirectory": "."
+    }
+  }
+}
