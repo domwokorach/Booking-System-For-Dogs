@@ -62,7 +62,8 @@ router.post("/", async (req, res, next) => {
                 dateTime: body.dateTime,
                 service: body.service,
                 notes: body.notes,
-                status: "Pending",
+                status: "Confirmed",
+                confirmedAt: new Date(),
             },
             include: {
                 user: true,
@@ -72,6 +73,8 @@ router.post("/", async (req, res, next) => {
         await sendBookingConfirmationEmail({
             to: appointment.user.email,
             firstName: appointment.user.firstName,
+            bookingId: appointment.id,
+            service: appointment.service,
             appointmentDateTime: appointment.dateTime,
             status: appointment.status,
         });
@@ -209,6 +212,8 @@ router.patch("/:id/confirm", async (req, res, next) => {
         await sendBookingConfirmationEmail({
             to: updated.user.email,
             firstName: updated.user.firstName,
+            bookingId: updated.id,
+            service: updated.service,
             appointmentDateTime: updated.dateTime,
             status: updated.status,
         });
@@ -282,6 +287,8 @@ router.post("/:id/email/confirmation", async (req, res, next) => {
         await sendBookingConfirmationEmail({
             to: appointment.user.email,
             firstName: appointment.user.firstName,
+            bookingId: appointment.id,
+            service: appointment.service,
             appointmentDateTime: appointment.dateTime,
             status: appointment.status,
         });

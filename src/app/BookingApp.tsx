@@ -66,7 +66,7 @@ interface AppointmentRecord {
   updatedAt: string;
 }
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const API_BASE = import.meta.env.VITE_API_URL?.trim() || "";
 const SESSION_STORAGE_KEY = "pawside-session";
 
 const SERVICES = [

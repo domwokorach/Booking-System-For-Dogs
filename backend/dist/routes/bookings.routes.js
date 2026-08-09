@@ -96,6 +96,8 @@ router.post("/confirm", async (req, res, next) => {
         await sendBookingConfirmationEmail({
             to: appointment.user.email,
             firstName: appointment.user.firstName,
+            bookingId: appointment.id,
+            service: appointment.service,
             appointmentDateTime: appointment.dateTime,
             status: toApiStatus(appointment.status),
         });
