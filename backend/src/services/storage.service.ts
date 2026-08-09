@@ -4,7 +4,6 @@ import { join } from "node:path";
 
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { Storage } from "@google-cloud/storage";
 
 import { env } from "../config/env.js";
 import { HttpError } from "../utils/http-error.js";
@@ -20,13 +19,40 @@ const s3Client = new S3Client({
       : undefined,
 });
 
-const gcsStorage =
-  env.GCP_PROJECT_ID && env.GCP_KEY_FILE
-    ? new Storage({
-        projectId: env.GCP_PROJECT_ID,
-        keyFilename: env.GCP_KEY_FILE,
-      })
-    : new Storage();
+type GcsFileHandle = {
+  save(buffer: Buffer, options: Record<string, unknown>): Promise<void>;
+  getSignedUrl(options: Record<string, unknown>): Promise<[string]>;
+};
+
+type GcsBucketHandle = {
+  file(key: string): GcsFileHandle;
+};
+
+type GcsStorageHandle = {
+  bucket(name: string): GcsBucketHandle;
+};
+
+let gcsStoragePromise: Promise<GcsStorageHandle> | null = null;
+
+async function getGcsStorage(): Promise<GcsStorageHandle> {
+  if (!gcsStoragePromise) {
+    gcsStoragePromise = (async () => {
+      const dynamicImport = new Function(
+        'return import("@google-cloud/storage")',
+      ) as () => Promise<{ Storage: new (options?: Record<string, unknown>) => GcsStorageHandle }>;
+
+      const { Storage } = await dynamicImport();
+      return env.GCP_PROJECT_ID && env.GCP_KEY_FILE
+        ? new Storage({
+            projectId: env.GCP_PROJECT_ID,
+            keyFilename: env.GCP_KEY_FILE,
+          })
+        : new Storage();
+    })();
+  }
+
+  return gcsStoragePromise;
+}
 
 type UploadResult = {
   provider: "s3" | "gcs";
@@ -94,6 +120,7 @@ export async function uploadFileToCloud(input: {
     };
   }
 
+  const gcsStorage = await getGcsStorage();
   const bucket = gcsStorage.bucket(env.GCP_BUCKET);
   const file = bucket.file(key);
 

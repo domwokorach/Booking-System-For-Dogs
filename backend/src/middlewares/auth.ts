@@ -19,7 +19,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   const token = header.slice("Bearer ".length);
 
   try {
-    const payload = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
+    const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as JwtPayload;
     req.user = {
       userId: payload.userId,
       email: payload.email,

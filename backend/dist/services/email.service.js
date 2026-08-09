@@ -44,3 +44,11 @@ export async function sendBookingCancellationEmail(data) {
         text: `Hi ${data.firstName}, your booking for ${formatDate(data.appointmentDateTime)} has been cancelled.`,
     });
 }
+export async function sendPasswordResetEmail(data) {
+    await transporter.sendMail({
+        from: env.EMAIL_FROM,
+        to: data.to,
+        subject: "Reset your password",
+        text: `Hello ${data.firstName},\n\nA password reset was requested for your account.\n\nReset link: ${data.resetUrl}\n\nIf you did not request this, you can ignore this email.`,
+    });
+}

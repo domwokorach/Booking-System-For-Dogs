@@ -3,13 +3,18 @@ import { z } from "zod";
 
 dotenv.config();
 
-const envSchema = z.object({
+const rawEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().default(4000),
   DATABASE_URL: z.string().min(1),
   CLIENT_ORIGIN: z.string().url().default("http://localhost:5173"),
-  JWT_SECRET: z.string().min(32),
+  JWT_SECRET: z.string().min(32).optional(),
   JWT_EXPIRES_IN: z.string().default("7d"),
+  JWT_ACCESS_SECRET: z.string().min(32).optional(),
+  JWT_REFRESH_SECRET: z.string().min(32).optional(),
+  JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
+  JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
+  FRONTEND_URL: z.string().url().default("http://localhost:5173"),
   SMTP_HOST: z.string().default(""),
   SMTP_PORT: z.coerce.number().default(2525),
   SMTP_USER: z.string().default(""),
@@ -25,4 +30,20 @@ const envSchema = z.object({
   GCP_KEY_FILE: z.string().default(""),
 });
 
-export const env = envSchema.parse(process.env);
+const rawEnv = rawEnvSchema.parse(process.env);
+
+const jwtAccessSecret = rawEnv.JWT_ACCESS_SECRET ?? rawEnv.JWT_SECRET;
+const jwtRefreshSecret = rawEnv.JWT_REFRESH_SECRET ?? rawEnv.JWT_SECRET;
+
+if (!jwtAccessSecret || !jwtRefreshSecret) {
+  throw new Error(
+    "Missing JWT secrets. Set JWT_ACCESS_SECRET and JWT_REFRESH_SECRET or provide JWT_SECRET.",
+  );
+}
+
+export const env = {
+  ...rawEnv,
+  JWT_SECRET: rawEnv.JWT_SECRET ?? jwtAccessSecret,
+  JWT_ACCESS_SECRET: jwtAccessSecret,
+  JWT_REFRESH_SECRET: jwtRefreshSecret,
+};
