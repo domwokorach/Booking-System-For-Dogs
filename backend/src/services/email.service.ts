@@ -1,6 +1,12 @@
 import { env } from "../config/env.js";
 
 const resendApiKey = env.RESEND_API_KEY?.trim();
+const SERVICE_LABELS: Record<string, string> = {
+  grooming: "Grooming",
+  training: "Training",
+  daycare: "Daycare",
+  boarding: "Boarding",
+};
 
 async function sendMailSafely(mail: { from: string; to: string; subject: string; text: string }) {
   if (!resendApiKey) {
@@ -37,21 +43,47 @@ type BookingEmailData = {
   firstName: string;
   appointmentDateTime: Date;
   status: string;
+  bookingId?: string;
+  service?: string | null;
 };
 
-function formatDate(value: Date): string {
+function formatDateTime(value: Date): string {
   return new Intl.DateTimeFormat("en-US", {
     dateStyle: "full",
     timeStyle: "short",
   }).format(value);
 }
 
+function formatDate(value: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "full",
+  }).format(value);
+}
+
+function formatTime(value: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeStyle: "short",
+  }).format(value);
+}
+
+function formatService(service: string | null | undefined): string {
+  if (!service) {
+    return "Not specified";
+  }
+
+  return SERVICE_LABELS[service] ?? service;
+}
+
+function resolveBookingRecipient(defaultRecipient: string): string {
+  return env.BOOKING_EMAIL_TO.trim() || defaultRecipient;
+}
+
 export async function sendBookingConfirmationEmail(data: BookingEmailData) {
   await sendMailSafely({
     from: env.EMAIL_FROM,
-    to: data.to,
+    to: resolveBookingRecipient(data.to),
     subject: "Booking confirmed",
-    text: `Hi ${data.firstName}, your booking is confirmed for ${formatDate(data.appointmentDateTime)}. Status: ${data.status}.`,
+    text: `Hi ${data.firstName},\n\nYour appointment has been confirmed.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nSelected service: ${formatService(data.service)}\nAppointment date: ${formatDate(data.appointmentDateTime)}\nAppointment time: ${formatTime(data.appointmentDateTime)}\nBooking status: ${data.status}\n\nWe look forward to seeing you.`,
   });
 }
 
@@ -60,7 +92,7 @@ export async function sendBookingUpdateEmail(data: BookingEmailData) {
     from: env.EMAIL_FROM,
     to: data.to,
     subject: "Booking updated",
-    text: `Hi ${data.firstName}, your booking was updated to ${formatDate(data.appointmentDateTime)}. Status: ${data.status}.`,
+    text: `Hi ${data.firstName}, your booking was updated to ${formatDateTime(data.appointmentDateTime)}. Status: ${data.status}.`,
   });
 }
 
@@ -69,7 +101,7 @@ export async function sendBookingCancellationEmail(data: BookingEmailData) {
     from: env.EMAIL_FROM,
     to: data.to,
     subject: "Booking cancelled",
-    text: `Hi ${data.firstName}, your booking for ${formatDate(data.appointmentDateTime)} has been cancelled.`,
+    text: `Hi ${data.firstName}, your booking for ${formatDateTime(data.appointmentDateTime)} has been cancelled.`,
   });
 }
 

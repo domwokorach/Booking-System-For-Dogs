@@ -201,6 +201,13 @@ export default function BookingApp() {
   const [rescheduleTime, setRescheduleTime] = useState<string | null>(null);
 
   const canProceed = Boolean(selectedDate && booking.service && booking.time);
+  const bookingRequirementsMessage = !selectedDate
+    ? "Choose a date to start booking."
+    : !booking.service
+      ? "Select a service to enable confirmation."
+      : !booking.time
+        ? "Select an available time to enable confirmation."
+        : null;
 
   const calDays = useMemo(() => buildCalendarDays(currentMonth), [currentMonth]);
 
@@ -412,7 +419,7 @@ export default function BookingApp() {
       }
 
       setBookingStep("confirmed");
-      setFeedback("Appointment booked successfully. A confirmation email is on the way.");
+      setFeedback("Appointment confirmed. A confirmation email has been sent.");
       setBooking({ service: null, time: null, notes: "" });
       setSelectedDate(null);
       void loadAppointments();
@@ -725,8 +732,8 @@ export default function BookingApp() {
                   </div>
                   {bookingStep === "confirmed" ? (
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-sm text-emerald-700">
-                      <p className="font-semibold">Your appointment request is in place.</p>
-                      <p className="mt-2">A confirmation email will be sent to {user.email}.</p>
+                      <p className="font-semibold">Your appointment is confirmed.</p>
+                      <p className="mt-2">A confirmation email has been sent.</p>
                       <button onClick={() => setBookingStep("select")} className="mt-4 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">Book another visit</button>
                     </div>
                   ) : (
@@ -775,6 +782,7 @@ export default function BookingApp() {
                           <form onSubmit={handleBookingSubmit} className="space-y-3">
                             <textarea value={booking.notes} onChange={(event) => setBooking((current) => ({ ...current, notes: event.target.value }))} rows={3} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder="Add a note for the team" />
                             <button disabled={!canProceed || loading} className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-70">{loading ? "Booking..." : "Confirm appointment"}</button>
+                            {!canProceed && bookingRequirementsMessage ? <p className="text-sm text-muted-foreground">{bookingRequirementsMessage}</p> : null}
                           </form>
                         </div>
                       ) : (
