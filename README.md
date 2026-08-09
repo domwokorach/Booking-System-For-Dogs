@@ -64,6 +64,8 @@ This repository contains a full-stack booking application with:
 
 ## Getting Started
 
+[View on GitHub](https://github.com/domwokorach/Booking-System-For-Dogs/tree/master#getting-started)
+
 1. Install dependencies from the repository root:
 
 ```bash
