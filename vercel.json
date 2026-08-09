@@ -5,7 +5,8 @@
       "framework": "vite"
     },
     "backend": {
-      "root": "backend"
+      "root": "backend",
+      "buildCommand": "pnpm run prisma:generate && pnpm run build"
     }
   },
   "rewrites": [

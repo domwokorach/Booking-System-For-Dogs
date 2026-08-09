@@ -14,6 +14,14 @@ const transporter = hasSmtpCredentials
     : nodemailer.createTransport({
         jsonTransport: true,
     });
+async function sendMailSafely(mail) {
+    try {
+        await transporter.sendMail(mail);
+    }
+    catch (error) {
+        console.error("Email delivery failed.", error);
+    }
+}
 function formatDate(value) {
     return new Intl.DateTimeFormat("en-US", {
         dateStyle: "full",
@@ -21,7 +29,7 @@ function formatDate(value) {
     }).format(value);
 }
 export async function sendBookingConfirmationEmail(data) {
-    await transporter.sendMail({
+    await sendMailSafely({
         from: env.EMAIL_FROM,
         to: data.to,
         subject: "Booking confirmed",
@@ -29,7 +37,7 @@ export async function sendBookingConfirmationEmail(data) {
     });
 }
 export async function sendBookingUpdateEmail(data) {
-    await transporter.sendMail({
+    await sendMailSafely({
         from: env.EMAIL_FROM,
         to: data.to,
         subject: "Booking updated",
@@ -37,7 +45,7 @@ export async function sendBookingUpdateEmail(data) {
     });
 }
 export async function sendBookingCancellationEmail(data) {
-    await transporter.sendMail({
+    await sendMailSafely({
         from: env.EMAIL_FROM,
         to: data.to,
         subject: "Booking cancelled",
@@ -45,7 +53,7 @@ export async function sendBookingCancellationEmail(data) {
     });
 }
 export async function sendPasswordResetEmail(data) {
-    await transporter.sendMail({
+    await sendMailSafely({
         from: env.EMAIL_FROM,
         to: data.to,
         subject: "Reset your password",

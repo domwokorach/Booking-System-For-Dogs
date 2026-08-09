@@ -1,8 +1,8 @@
-# Appointment Booking System
+# Dog Appointment Booking System
 
-A secure appointment booking API built with **Node.js, NestJS, Prisma ORM, PostgreSQL, and Docker**.
+A secure appointment booking application built with **Node.js, NestJS, Prisma ORM, PostgreSQL, and Docker**.
 
-The system allows users to register, sign in, select a service, choose an available appointment date and time, confirm a booking, reschedule appointments, cancel bookings, and receive email notifications.
+Users can create an account, sign in, choose a service, select an available appointment date and time, confirm a booking, reschedule or cancel appointments, and receive email notifications.
 
 ## Technology Stack
 
@@ -15,8 +15,9 @@ The system allows users to register, sign in, select a service, choose an availa
 - Docker Compose
 - JWT Authentication
 - Argon2 password hashing
-- Email notifications
-- Optional AWS S3 or Google Cloud Storage for uploaded files
+- SMTP email notifications
+- Optional AWS S3
+- Optional Google Cloud Storage
 
 ## Architecture
 
@@ -30,7 +31,7 @@ Prisma ORM
 PostgreSQL
 ```
 
-Docker runs the application services:
+Docker can run both the API and database:
 
 ```text
 Docker Compose
@@ -38,7 +39,7 @@ Docker Compose
 └── PostgreSQL Database
 ```
 
-## Features
+## Main Features
 
 ### Authentication
 
@@ -47,47 +48,42 @@ Docker Compose
 - Logout
 - Forgot Password
 - Reset Password
-- JWT authentication
-- Secure password hashing
+- JWT access and refresh tokens
 
 ### User Account
 
 Users can:
 
-- View their profile
-- Edit their personal information
-- View their bookings
-- Change their password
-- Delete their account
+- View profile
+- Edit profile
+- View bookings
+- Change password
+- Delete account
 
-User information stored in PostgreSQL includes:
+Stored user data includes:
 
 - ID
 - First name
 - Surname
 - Address
-- Email address
+- Email
 - Mobile number
 - Password hash
 
-## Appointment Booking
+### Appointment Booking
 
 Users can:
 
-- Select a service
+- Choose a service
 - Choose a date
 - View available time slots
-- Choose an available time
+- Choose a time
 - Confirm an appointment
-- View existing bookings
-- Change the appointment date
-- Change the appointment time
-- Reschedule an appointment
-- Cancel an appointment
+- View bookings
+- Reschedule a booking
+- Cancel a booking
 
-### Booking Status
-
-Bookings can have the following statuses:
+Booking statuses:
 
 ```text
 PENDING
@@ -123,14 +119,10 @@ Booking Confirmed
     ↓
 Send Confirmation Email
     ↓
-Display Booking in My Account
+Show Booking in My Account
 ```
 
-PostgreSQL is responsible for preventing duplicate bookings.
-
-The frontend must never write booking information directly to PostgreSQL.
-
-The correct flow is:
+The frontend must never write directly to PostgreSQL.
 
 ```text
 Frontend JavaScript
@@ -147,7 +139,7 @@ PostgreSQL
 ## Project Structure
 
 ```text
-appointment-booking/
+dog-booking/
 ├── .env
 ├── .env.example
 ├── .gitignore
@@ -164,112 +156,76 @@ appointment-booking/
 └── src/
     ├── main.ts
     ├── app.module.ts
-    │
-    ├── generated/
-    │   └── prisma/
-    │
     ├── prisma/
-    │   ├── prisma.module.ts
-    │   └── prisma.service.ts
-    │
     ├── auth/
-    │   ├── auth.module.ts
-    │   ├── auth.controller.ts
-    │   ├── auth.service.ts
-    │   ├── jwt-auth.guard.ts
-    │   └── dto/
-    │       ├── register.dto.ts
-    │       └── login.dto.ts
-    │
     ├── users/
-    │   ├── users.module.ts
-    │   ├── users.controller.ts
-    │   └── users.service.ts
-    │
     ├── services/
-    │   ├── services.module.ts
-    │   ├── services.controller.ts
-    │   └── services.service.ts
-    │
     ├── slots/
-    │   ├── slots.module.ts
-    │   ├── slots.controller.ts
-    │   └── slots.service.ts
-    │
     ├── bookings/
-    │   ├── bookings.module.ts
-    │   ├── bookings.controller.ts
-    │   ├── bookings.service.ts
-    │   └── dto/
-    │
     └── notifications/
-        ├── notifications.module.ts
-        └── notifications.service.ts
 ```
 
 ## Environment Variables
 
-Create a `.env` file in the root directory.
+Create a `.env` file in the project root.
+
+> Never commit real passwords, API keys, app passwords, or cloud credentials to GitHub.
 
 Example:
 
 ```env
-# Application
 NODE_ENV=development
 PORT=3000
 
-# PostgreSQL
 POSTGRES_HOST=db
 POSTGRES_PORT=5432
 POSTGRES_DB=booking_db
 POSTGRES_USER=booking_user
-POSTGRES_PASSWORD=change_this_password
+POSTGRES_PASSWORD=CHANGE_ME
 
-# Prisma
-DATABASE_URL="postgresql://booking_user:change_this_password@db:5432/booking_db?schema=public"
+DATABASE_URL="postgresql://booking_user:CHANGE_ME@db:5432/booking_db?schema=public"
 
-# JWT
-JWT_ACCESS_SECRET=replace_with_a_long_random_secret
-JWT_REFRESH_SECRET=replace_with_another_long_random_secret
-
+JWT_ACCESS_SECRET=GENERATE_A_LONG_RANDOM_SECRET
+JWT_REFRESH_SECRET=GENERATE_ANOTHER_LONG_RANDOM_SECRET
 JWT_ACCESS_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=7d
 
-# Frontend
 FRONTEND_URL=http://localhost:3001
 
-# Email
-SMTP_HOST=smtp.example.com
+SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USER=your_email@example.com
-SMTP_PASSWORD=your_email_password
-EMAIL_FROM=appointments@example.com
+SMTP_USER=your-email@example.com
+SMTP_PASS=YOUR_APP_PASSWORD
+EMAIL_FROM=your-email@example.com
 
-# Optional AWS S3
 AWS_REGION=eu-west-2
+AWS_S3_BUCKET=dog-booking-uploads
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
-AWS_S3_BUCKET=
 
-# Optional Google Cloud Storage
-GOOGLE_CLOUD_PROJECT_ID=
-GOOGLE_CLOUD_BUCKET=
+GCP_PROJECT_ID=
+GCP_BUCKET=dog-booking-uploads
 GOOGLE_APPLICATION_CREDENTIALS=
 ```
 
-Never commit the real `.env` file to GitHub.
+If NestJS runs outside Docker, change the Prisma host from `db` to `localhost`.
 
-Add it to `.gitignore`:
+## `.gitignore`
 
 ```gitignore
 .env
+.env.*
+!.env.example
 node_modules/
 dist/
+*.log
+credentials/
+secrets/
 ```
 
 ## Database Models
 
-The main PostgreSQL tables are:
+Main PostgreSQL tables:
 
 ```text
 User
@@ -304,7 +260,7 @@ durationMinutes
 active
 ```
 
-### Appointment Slot
+### AppointmentSlot
 
 ```text
 id
@@ -358,11 +314,6 @@ GET /api/services
 
 ```http
 GET /api/slots
-```
-
-Example:
-
-```http
 GET /api/slots?serviceId=SERVICE_ID&date=2026-08-10
 ```
 
@@ -378,13 +329,13 @@ PATCH /api/bookings/:id/cancel
 
 ## Confirm Appointment
 
-The frontend sends:
+Frontend request:
 
 ```http
 POST /api/bookings/confirm
 ```
 
-Example request:
+Example body:
 
 ```json
 {
@@ -393,18 +344,18 @@ Example request:
 }
 ```
 
-The backend performs the following checks:
+Backend checks:
 
 ```text
 1. Authenticate user
-2. Check that the service exists
-3. Check that the appointment slot exists
-4. Check that the slot is active
-5. Check that the slot belongs to the selected service
-6. Check that the slot has not already been booked
-7. Create the booking
-8. Save it in PostgreSQL
-9. Send the confirmation email
+2. Verify service exists
+3. Verify appointment slot exists
+4. Verify slot is active
+5. Verify slot belongs to selected service
+6. Verify slot is not already booked
+7. Create booking
+8. Save booking in PostgreSQL
+9. Send confirmation email
 ```
 
 Example success response:
@@ -420,7 +371,7 @@ Example success response:
 }
 ```
 
-If another customer has already booked the slot:
+If the slot is already booked:
 
 ```json
 {
@@ -443,66 +394,28 @@ Example request:
 }
 ```
 
-The API should:
-
-```text
-Check new slot
-↓
-Verify availability
-↓
-Release old slot
-↓
-Assign new slot
-↓
-Update appointment date/time
-↓
-Save changes
-↓
-Send rescheduling email
-```
-
 ## Cancel Appointment
 
 ```http
 PATCH /api/bookings/:id/cancel
 ```
 
-The booking becomes:
+The booking status becomes:
 
 ```text
-status = CANCELLED
+CANCELLED
 ```
 
-The appointment slot is released so another customer can book it.
-
-A cancellation email should then be sent to the customer.
+The previous appointment slot should be released so it can become available again.
 
 ## Email Notifications
 
-Send emails when:
+Send email notifications when:
 
-- A booking is created
-- A booking is confirmed
-- A booking is rescheduled
-- A booking is cancelled
-
-Example confirmation:
-
-```text
-Subject: Appointment Confirmed
-
-Hello John,
-
-Your appointment has been confirmed.
-
-Service: Consultation
-Date: 10 August 2026
-Time: 09:00
-
-Booking Reference: XXXXX
-
-Thank you.
-```
+- Booking is created
+- Booking is confirmed
+- Booking is rescheduled
+- Booking is cancelled
 
 ## Navigation
 
@@ -529,8 +442,6 @@ Logout
 
 ## Account Page
 
-The account page should provide:
-
 ```text
 My Profile
 My Bookings
@@ -541,39 +452,27 @@ Delete Account
 Logout
 ```
 
-For each booking:
-
-```text
-Service: Consultation
-Date: 10 August 2026
-Time: 09:00
-Status: CONFIRMED
-
-[ Change Date / Time ]
-[ Cancel Booking ]
-```
-
 ## Docker
 
-Start the application with:
+Start:
 
 ```bash
 docker compose up --build
 ```
 
-Run in the background:
+Start in background:
 
 ```bash
 docker compose up -d --build
 ```
 
-Stop the application:
+Stop:
 
 ```bash
 docker compose down
 ```
 
-View running containers:
+View containers:
 
 ```bash
 docker compose ps
@@ -587,7 +486,7 @@ docker compose logs -f api
 
 ## Prisma
 
-Generate the Prisma client:
+Generate Prisma Client:
 
 ```bash
 npx prisma generate
@@ -613,30 +512,27 @@ npx prisma studio
 
 ## Security
 
-The application should:
-
-- Hash passwords using Argon2.
+- Hash passwords with Argon2.
 - Never store plain-text passwords.
 - Never return password hashes in API responses.
-- Protect private endpoints using JWT authentication.
-- Validate all incoming request data.
-- Store JWT secrets in environment variables.
-- Use unique email addresses.
+- Protect private endpoints with JWT authentication.
+- Validate all request data.
+- Keep JWT secrets in environment variables.
+- Require unique email addresses.
 - Prevent users from editing another user's bookings.
 - Prevent duplicate appointment bookings.
 - Use HTTPS in production.
 - Use secure password-reset tokens.
-- Keep `.env` files out of Git.
-- Validate uploaded files before sending them to cloud storage.
+- Keep `.env` out of Git.
+- Rotate any credential that has been exposed.
+- Validate uploaded files before cloud storage.
 
 ## Cloud Storage
 
-Do not use AWS S3 or Google Cloud Storage as the main database.
-
-Store structured information in PostgreSQL:
+Store structured application data in PostgreSQL:
 
 ```text
-User information
+Users
 Authentication data
 Services
 Appointments
@@ -644,7 +540,7 @@ Bookings
 Booking status
 ```
 
-Use AWS S3 or Google Cloud Storage for files such as:
+Use AWS S3 or Google Cloud Storage for:
 
 ```text
 Profile photos
@@ -654,11 +550,7 @@ Attachments
 Uploaded files
 ```
 
-The database can store the cloud object key or file URL.
-
 ## Development Workflow
-
-Recommended implementation order:
 
 ```text
 1. Docker + PostgreSQL
@@ -675,8 +567,28 @@ Recommended implementation order:
 12. Email notifications
 13. Forgot / Reset Password
 14. Account management
-15. Optional cloud file storage
+15. Optional cloud storage
 ```
+
+## Git
+
+Before committing, verify that `.env` is ignored:
+
+```bash
+git check-ignore -v .env
+git status
+```
+
+Then commit:
+
+```bash
+git add .
+git status
+git commit -m "Add appointment booking system"
+git push
+```
+
+Do not continue if `.env` appears under files that will be committed.
 
 ## Recommended Stack
 
@@ -690,4 +602,4 @@ Prisma
 PostgreSQL
 ```
 
-This architecture provides a strong foundation for a secure, scalable appointment booking system.
+This architecture provides a strong foundation for a secure and scalable appointment booking system.

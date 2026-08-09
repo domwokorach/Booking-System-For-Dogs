@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 import { env } from "../config/env.js";
-import { HttpError } from "../utils/http-error.js";
 
 const s3Client = new S3Client({
   region: env.AWS_REGION,
@@ -65,6 +64,13 @@ function buildObjectKey(filename: string): string {
   return `uploads/${Date.now()}-${randomUUID()}${ext}`;
 }
 
+async function writeToLocalFallback(key: string, buffer: Buffer) {
+  const uploadDir = join(process.cwd(), "uploads");
+  const outputPath = join(uploadDir, key);
+  await mkdir(dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, buffer);
+}
+
 export async function uploadFileToCloud(input: {
   filename: string;
   mimeType: string;
@@ -74,8 +80,7 @@ export async function uploadFileToCloud(input: {
 
   if (env.STORAGE_PROVIDER === "s3") {
     if (!env.AWS_S3_BUCKET || !env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY) {
-      const uploadDir = join(process.cwd(), "uploads");
-      await writeFile(join(uploadDir, key), input.buffer);
+      await writeToLocalFallback(key, input.buffer);
 
       return {
         provider: "s3",
@@ -110,8 +115,7 @@ export async function uploadFileToCloud(input: {
   }
 
   if (!env.GCP_BUCKET) {
-    const uploadDir = join(process.cwd(), "uploads");
-    await writeFile(join(uploadDir, key), input.buffer);
+    await writeToLocalFallback(key, input.buffer);
 
     return {
       provider: "gcs",

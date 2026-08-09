@@ -26,6 +26,14 @@ type BookingEmailData = {
   status: string;
 };
 
+async function sendMailSafely(mail: Parameters<typeof transporter.sendMail>[0]) {
+  try {
+    await transporter.sendMail(mail);
+  } catch (error) {
+    console.error("Email delivery failed.", error);
+  }
+}
+
 function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("en-US", {
     dateStyle: "full",
@@ -34,7 +42,7 @@ function formatDate(value: Date): string {
 }
 
 export async function sendBookingConfirmationEmail(data: BookingEmailData) {
-  await transporter.sendMail({
+  await sendMailSafely({
     from: env.EMAIL_FROM,
     to: data.to,
     subject: "Booking confirmed",
@@ -43,7 +51,7 @@ export async function sendBookingConfirmationEmail(data: BookingEmailData) {
 }
 
 export async function sendBookingUpdateEmail(data: BookingEmailData) {
-  await transporter.sendMail({
+  await sendMailSafely({
     from: env.EMAIL_FROM,
     to: data.to,
     subject: "Booking updated",
@@ -52,7 +60,7 @@ export async function sendBookingUpdateEmail(data: BookingEmailData) {
 }
 
 export async function sendBookingCancellationEmail(data: BookingEmailData) {
-  await transporter.sendMail({
+  await sendMailSafely({
     from: env.EMAIL_FROM,
     to: data.to,
     subject: "Booking cancelled",
@@ -67,7 +75,7 @@ type PasswordResetEmailData = {
 };
 
 export async function sendPasswordResetEmail(data: PasswordResetEmailData) {
-  await transporter.sendMail({
+  await sendMailSafely({
     from: env.EMAIL_FROM,
     to: data.to,
     subject: "Reset your password",
