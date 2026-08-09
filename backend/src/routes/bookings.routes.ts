@@ -2,10 +2,12 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { prisma } from "../config/prisma.js";
+import { env } from "../config/env.js";
 import { requireAuth } from "../middlewares/auth.js";
 import {
   sendBookingCancellationEmail,
   sendBookingConfirmationEmail,
+  sendDeletionRequestEmail,
   sendBookingUpdateEmail,
 } from "../services/email.service.js";
 import { isSlotAvailable } from "../utils/appointment-slots.js";
@@ -320,6 +322,104 @@ router.patch("/:id/cancel", async (req, res, next) => {
       appointmentDate: formatDate(updated.dateTime),
       appointmentTime: formatTime(updated.dateTime),
       message: "Appointment cancelled successfully",
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete("/:id", async (req, res, next) => {
+  try {
+    const approvalToken = req.header("x-delete-approval-token")?.trim();
+    if (!approvalToken || !env.DELETE_APPROVAL_TOKEN.trim() || approvalToken !== env.DELETE_APPROVAL_TOKEN.trim()) {
+      throw new HttpError(403, "Deletion approval required.");
+    }
+
+    const existing = await prisma.appointment.findFirst({
+      where: {
+        id: req.params.id,
+        userId: req.user!.userId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!existing) {
+      throw new HttpError(404, "Booking not found.");
+    }
+
+    if (!existing.deleteRequestedAt) {
+      throw new HttpError(400, "Deletion request not found.");
+    }
+
+    await sendBookingCancellationEmail({
+      to: existing.user.email,
+      firstName: existing.user.firstName,
+      bookingId: existing.id,
+      service: existing.service,
+      appointmentDateTime: existing.dateTime,
+      status: toApiStatus(existing.status),
+    });
+
+    await prisma.appointment.delete({
+      where: { id: existing.id },
+    });
+
+    return res.json({
+      success: true,
+      bookingId: existing.id,
+      message: "Appointment deleted successfully",
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/:id/delete-request", async (req, res, next) => {
+  try {
+    const existing = await prisma.appointment.findFirst({
+      where: {
+        id: req.params.id,
+        userId: req.user!.userId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!existing) {
+      throw new HttpError(404, "Booking not found.");
+    }
+
+    if (existing.deleteRequestedAt) {
+      return res.json({ message: "Deletion request already sent." });
+    }
+
+    const updated = await prisma.appointment.update({
+      where: { id: existing.id },
+      data: {
+        deleteRequestedAt: new Date(),
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    await sendDeletionRequestEmail({
+      to: updated.user.email,
+      firstName: updated.user.firstName,
+      bookingId: updated.id,
+      service: updated.service,
+      appointmentDateTime: updated.dateTime,
+      status: toApiStatus(updated.status),
+    });
+
+    return res.json({
+      success: true,
+      bookingId: updated.id,
+      status: toApiStatus(updated.status),
+      message: "Deletion request sent for approval",
     });
   } catch (error) {
     return next(error);

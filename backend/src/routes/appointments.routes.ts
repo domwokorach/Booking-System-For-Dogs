@@ -2,10 +2,13 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { prisma } from "../config/prisma.js";
+import { env } from "../config/env.js";
 import { requireAuth } from "../middlewares/auth.js";
 import {
+  resolveBookingRecipient,
   sendBookingCancellationEmail,
   sendBookingConfirmationEmail,
+  sendDeletionRequestEmail,
   sendBookingUpdateEmail,
 } from "../services/email.service.js";
 import {
@@ -128,7 +131,10 @@ router.post("/", async (req, res, next) => {
       status: appointment.status,
     });
 
-    return res.status(201).json(appointment);
+    return res.status(201).json({
+      ...appointment,
+      notificationRecipient: resolveBookingRecipient(appointment.user.email),
+    });
   } catch (error) {
     return next(error);
   }
@@ -180,7 +186,10 @@ router.patch("/:id", async (req, res, next) => {
       status: updated.status,
     });
 
-    return res.json(updated);
+    return res.json({
+      ...updated,
+      notificationRecipient: resolveBookingRecipient(updated.user.email),
+    });
   } catch (error) {
     return next(error);
   }
@@ -236,7 +245,10 @@ router.patch("/:id/reschedule", async (req, res, next) => {
       status: updated.status,
     });
 
-    return res.json(updated);
+    return res.json({
+      ...updated,
+      notificationRecipient: resolveBookingRecipient(updated.user.email),
+    });
   } catch (error) {
     return next(error);
   }
@@ -341,6 +353,105 @@ router.patch("/:id/cancel", async (req, res, next) => {
     });
 
     return res.json(updated);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.delete("/:id", async (req, res, next) => {
+  try {
+    const approvalToken = req.header("x-delete-approval-token")?.trim();
+    if (!approvalToken || !env.DELETE_APPROVAL_TOKEN.trim() || approvalToken !== env.DELETE_APPROVAL_TOKEN.trim()) {
+      throw new HttpError(403, "Deletion approval required.");
+    }
+
+    const appointment = await prisma.appointment.findFirst({
+      where: {
+        id: req.params.id,
+        userId: req.user!.userId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!appointment) {
+      throw new HttpError(404, "Appointment not found.");
+    }
+
+    if (!appointment.deleteRequestedAt) {
+      throw new HttpError(400, "Deletion request not found.");
+    }
+
+    await sendBookingCancellationEmail({
+      to: appointment.user.email,
+      firstName: appointment.user.firstName,
+      bookingId: appointment.id,
+      service: appointment.service,
+      appointmentDateTime: appointment.dateTime,
+      status: appointment.status,
+    });
+
+    await prisma.appointment.delete({
+      where: { id: appointment.id },
+    });
+
+    req.app.get("io").emit("appointments:deleted", {
+      appointmentId: appointment.id,
+    });
+
+    return res.json({ message: "Appointment deleted successfully" });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/:id/delete-request", async (req, res, next) => {
+  try {
+    const appointment = await prisma.appointment.findFirst({
+      where: {
+        id: req.params.id,
+        userId: req.user!.userId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!appointment) {
+      throw new HttpError(404, "Appointment not found.");
+    }
+
+    if (appointment.deleteRequestedAt) {
+      return res.json({ message: "Deletion request already sent." });
+    }
+
+    const updated = await prisma.appointment.update({
+      where: { id: appointment.id },
+      data: {
+        deleteRequestedAt: new Date(),
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    await sendDeletionRequestEmail({
+      to: updated.user.email,
+      firstName: updated.user.firstName,
+      bookingId: updated.id,
+      service: updated.service,
+      appointmentDateTime: updated.dateTime,
+      status: updated.status,
+    });
+
+    req.app.get("io").emit("appointments:updated", {
+      appointmentId: updated.id,
+      dateTime: updated.dateTime,
+      status: updated.status,
+    });
+
+    return res.json({ message: "Deletion request sent for approval." });
   } catch (error) {
     return next(error);
   }

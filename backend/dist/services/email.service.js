@@ -56,7 +56,7 @@ function formatService(service) {
     }
     return SERVICE_LABELS[service] ?? service;
 }
-function resolveBookingRecipient(defaultRecipient) {
+export function resolveBookingRecipient(defaultRecipient) {
     return env.BOOKING_EMAIL_TO.trim() || defaultRecipient;
 }
 export async function sendBookingConfirmationEmail(data) {
@@ -81,6 +81,14 @@ export async function sendBookingCancellationEmail(data) {
         to: resolveBookingRecipient(data.to),
         subject: "Booking cancelled",
         text: `Hi ${data.firstName},\n\nYour booking has been cancelled.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nSelected service: ${formatService(data.service)}\nAppointment date: ${formatDate(data.appointmentDateTime)}\nAppointment time: ${formatTime(data.appointmentDateTime)}\nBooking status: ${data.status}.`,
+    });
+}
+export async function sendDeletionRequestEmail(data) {
+    await sendMailSafely({
+        from: env.EMAIL_FROM,
+        to: resolveBookingRecipient(data.to),
+        subject: "Deletion approval requested",
+        text: `Hi ${data.firstName},\n\nA deletion request has been submitted for this booking and needs approval before the appointment can be removed.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nSelected service: ${formatService(data.service)}\nAppointment date: ${formatDate(data.appointmentDateTime)}\nAppointment time: ${formatTime(data.appointmentDateTime)}\nBooking status: ${data.status}.\n\nPlease review and approve the deletion request before the appointment is removed.`,
     });
 }
 export async function sendPasswordResetEmail(data) {

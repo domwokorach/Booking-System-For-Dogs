@@ -20,6 +20,7 @@ const rawEnvSchema = z.object({
     RESEND_API_KEY: z.string().default(""),
     EMAIL_FROM: z.string().min(1).default("Pawside <onboarding@resend.dev>"),
     BOOKING_EMAIL_TO: z.string().email().default(""),
+    DELETE_APPROVAL_TOKEN: z.string().default(""),
     STORAGE_PROVIDER: z.enum(["s3", "gcs"]).default("s3"),
     AWS_REGION: z.string().default("us-east-1"),
     AWS_S3_BUCKET: z.string().default(""),

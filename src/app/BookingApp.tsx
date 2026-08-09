@@ -16,6 +16,7 @@ import {
   LogIn,
   UserPlus,
   CalendarClock,
+  Trash2,
 } from "lucide-react";
 import {
   format,
@@ -62,8 +63,14 @@ interface AppointmentRecord {
   status: string;
   service?: string | null;
   notes?: string | null;
+  deleteRequestedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+interface AppointmentMutationResponse {
+  notificationRecipient?: string;
+  message?: string;
 }
 
 const API_BASE = import.meta.env.VITE_API_URL?.trim() || "";
@@ -193,6 +200,7 @@ export default function BookingApp() {
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [bookingNotificationRecipient, setBookingNotificationRecipient] = useState<string | null>(null);
   const [editingAppointmentId, setEditingAppointmentId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState({ service: null as ServiceId | null, notes: "" });
   const [rescheduleAppointmentId, setRescheduleAppointmentId] = useState<string | null>(null);
@@ -257,6 +265,7 @@ export default function BookingApp() {
     client.on("appointments:rescheduled", refreshAppointments);
     client.on("appointments:confirmed", refreshAppointments);
     client.on("appointments:cancelled", refreshAppointments);
+    client.on("appointments:deleted", refreshAppointments);
 
     return () => {
       client.disconnect();
@@ -424,13 +433,19 @@ export default function BookingApp() {
         }),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as AppointmentMutationResponse;
       if (!response.ok) {
         throw new Error(data.message || "Unable to create the appointment.");
       }
 
+      const notificationRecipient = data.notificationRecipient ?? null;
       setBookingStep("confirmed");
-      setFeedback("Appointment confirmed. A confirmation email has been sent.");
+      setBookingNotificationRecipient(notificationRecipient);
+      setFeedback(
+        notificationRecipient
+          ? `Appointment confirmed. A confirmation email has been sent to ${notificationRecipient}.`
+          : "Appointment confirmed. A confirmation email has been sent.",
+      );
       setBooking({ service: null, time: null, notes: "" });
       setSelectedDate(null);
       void loadAppointments();
@@ -451,11 +466,45 @@ export default function BookingApp() {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await response.json();
+      const data = (await response.json()) as AppointmentMutationResponse;
       if (!response.ok) {
         throw new Error(data.message || `Unable to ${action} the appointment.`);
       }
-      setFeedback(`Appointment ${action === "confirm" ? "confirmed" : "cancelled"}.`);
+
+      if (action === "confirm" && data.notificationRecipient) {
+        setBookingNotificationRecipient(data.notificationRecipient);
+      }
+
+      setFeedback(
+        action === "confirm" && data.notificationRecipient
+          ? `Appointment confirmed. A confirmation email has been sent to ${data.notificationRecipient}.`
+          : `Appointment ${action === "confirm" ? "confirmed" : "cancelled"}.`,
+      );
+      void loadAppointments();
+    } catch (error) {
+      setFeedback((error as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDeleteAppointment(appointmentId: string) {
+    if (!token) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/appointments/${appointmentId}/delete-request`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to request deletion.");
+      }
+
+      setFeedback("Deletion request sent for approval.");
       void loadAppointments();
     } catch (error) {
       setFeedback((error as Error).message);
@@ -676,6 +725,7 @@ export default function BookingApp() {
                     <div>
                       <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">Upcoming bookings</p>
                       <h3 className="text-2xl font-bold font-serif text-foreground">Manage your appointments</h3>
+                      <p className="mt-2 text-sm text-muted-foreground">Delete sends a request to Dominic for approval before anything is removed.</p>
                     </div>
                     <CalendarClock className="text-primary" size={24} />
                   </div>
@@ -686,6 +736,7 @@ export default function BookingApp() {
                       const status = getStatusStyles(appointment.status);
                       const isEditing = editingAppointmentId === appointment.id;
                       const isRescheduling = rescheduleAppointmentId === appointment.id;
+                      const deletionRequested = Boolean(appointment.deleteRequestedAt);
 
                       return (
                         <div key={appointment.id} className="rounded-2xl border border-border bg-background p-5">
@@ -700,9 +751,18 @@ export default function BookingApp() {
                           <div className="mt-4 flex flex-wrap gap-2">
                             <button onClick={() => handleAppointmentAction(appointment.id, "confirm")} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">Confirm</button>
                             <button onClick={() => handleAppointmentAction(appointment.id, "cancel")} className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">Cancel</button>
+                            <button onClick={() => handleDeleteAppointment(appointment.id)} disabled={deletionRequested} className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-60">
+                              <span className="inline-flex items-center gap-1">
+                                <Trash2 size={14} />
+                                {deletionRequested ? "Delete requested" : "Delete"}
+                              </span>
+                            </button>
                             <button onClick={() => { setEditingAppointmentId(appointment.id); setEditDraft({ service: (appointment.service as ServiceId) || null, notes: appointment.notes || "" }); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Edit</button>
                             <button onClick={() => { setRescheduleAppointmentId(appointment.id); setRescheduleDate(new Date(appointment.dateTime)); setRescheduleTime(null); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Reschedule</button>
                           </div>
+                          {deletionRequested ? (
+                            <p className="mt-3 text-sm text-muted-foreground">A deletion request has been sent to Dominic for approval. The appointment will remain until it is approved and removed.</p>
+                          ) : null}
                           {isEditing ? (
                             <div className="mt-4 rounded-2xl border border-border bg-card p-4">
                               <select value={editDraft.service ?? ""} onChange={(event) => setEditDraft((current) => ({ ...current, service: (event.target.value || null) as ServiceId | null }))} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
@@ -744,7 +804,10 @@ export default function BookingApp() {
                   {bookingStep === "confirmed" ? (
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-sm text-emerald-700">
                       <p className="font-semibold">Your appointment is confirmed.</p>
-                      <p className="mt-2">A confirmation email has been sent.</p>
+                      <p className="mt-2">
+                        A confirmation email has been sent
+                        {bookingNotificationRecipient ? ` to ${bookingNotificationRecipient}.` : "."}
+                      </p>
                       <button onClick={() => setBookingStep("select")} className="mt-4 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">Book another visit</button>
                     </div>
                   ) : (

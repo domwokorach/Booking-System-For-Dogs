@@ -52,6 +52,7 @@ model Appointment {
   notes            String?
   confirmedAt      DateTime?
   cancelledAt      DateTime?
+  deleteRequestedAt DateTime?
   rescheduledFrom  DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
