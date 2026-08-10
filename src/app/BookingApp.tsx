@@ -40,7 +40,7 @@ import { formatSlotLabel, resolveAppointmentDateTime } from "./lib/booking-time"
 
 type ServiceId = "grooming" | "training" | "daycare" | "boarding";
 type AuthMode = "login" | "register";
-type CurrentView = "home" | "login" | "register" | "dashboard";
+type CurrentView = "home" | "login" | "register" | "dashboard" | "delete-account-confirm";
 
 interface BookingState {
   service: ServiceId | null;
@@ -75,6 +75,8 @@ interface AppointmentMutationResponse {
 
 const API_BASE = import.meta.env.VITE_API_URL?.trim() || "";
 const SESSION_STORAGE_KEY = "pawside-session";
+const LAST_ACTIVITY_STORAGE_KEY = "pawside-last-activity";
+const SESSION_INACTIVITY_TIMEOUT_MS = 2 * 60 * 1_000;
 const APPOINTMENT_REFRESH_INTERVAL_MS = 5_000;
 
 const MONTHS = [
@@ -228,6 +230,7 @@ export default function BookingApp() {
     currentPassword: "",
     confirmation: "",
   });
+  const [accountDeletionToken, setAccountDeletionToken] = useState<string | null>(null);
 
   const canProceed = Boolean(selectedDate && booking.service && booking.time);
   const bookingRequirementsMessage = !selectedDate
@@ -241,6 +244,13 @@ export default function BookingApp() {
   const calDays = useMemo(() => buildCalendarDays(currentMonth), [currentMonth]);
 
   useEffect(() => {
+    const deletionToken = new URLSearchParams(window.location.search).get("deleteAccountToken");
+    if (deletionToken) {
+      setAccountDeletionToken(deletionToken);
+      setCurrentView("delete-account-confirm");
+      return;
+    }
+
     const saved = window.localStorage.getItem(SESSION_STORAGE_KEY);
     if (!saved) {
       return;
@@ -281,6 +291,95 @@ export default function BookingApp() {
     return () => {
       window.clearInterval(refreshInterval);
       window.removeEventListener("focus", refreshWhenVisible);
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    let timeoutId: number | undefined;
+    let lastRecordedAt = 0;
+
+    function readLastActivity() {
+      const stored = Number(window.localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY));
+      return Number.isFinite(stored) && stored > 0 ? stored : Date.now();
+    }
+
+    function scheduleLogout(delay = SESSION_INACTIVITY_TIMEOUT_MS) {
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+      timeoutId = window.setTimeout(expireSession, Math.max(0, delay));
+    }
+
+    function expireSession() {
+      const elapsed = Date.now() - readLastActivity();
+      if (elapsed < SESSION_INACTIVITY_TIMEOUT_MS) {
+        scheduleLogout(SESSION_INACTIVITY_TIMEOUT_MS - elapsed);
+        return;
+      }
+
+      clearSession();
+      setFeedback("You were logged out after 2 minutes of inactivity.");
+    }
+
+    function recordActivity() {
+      const now = Date.now();
+      if (now - lastRecordedAt < 1_000) {
+        return;
+      }
+
+      lastRecordedAt = now;
+      window.localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(now));
+      scheduleLogout();
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key === LAST_ACTIVITY_STORAGE_KEY && event.newValue) {
+        const lastActivity = Number(event.newValue);
+        if (Number.isFinite(lastActivity)) {
+          scheduleLogout(SESSION_INACTIVITY_TIMEOUT_MS - (Date.now() - lastActivity));
+        }
+      }
+
+      if (event.key === SESSION_STORAGE_KEY && event.newValue === null) {
+        setUser(null);
+        setToken(null);
+        setAppointments([]);
+        setCurrentView("home");
+        setFeedback("You were logged out in another tab.");
+      }
+    }
+
+    if (!window.localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY)) {
+      window.localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(Date.now()));
+    }
+
+    const elapsed = Date.now() - readLastActivity();
+    scheduleLogout(SESSION_INACTIVITY_TIMEOUT_MS - elapsed);
+
+    const activityEvents: Array<keyof WindowEventMap> = [
+      "mousemove",
+      "pointerdown",
+      "keydown",
+      "scroll",
+      "touchstart",
+    ];
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, recordActivity, { passive: true });
+    });
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, recordActivity);
+      });
+      window.removeEventListener("storage", handleStorage);
     };
   }, [token]);
 
@@ -356,6 +455,7 @@ export default function BookingApp() {
 
   function persistSession(nextUser: UserProfile, nextToken: string) {
     window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ user: nextUser, token: nextToken }));
+    window.localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(Date.now()));
     setUser(nextUser);
     setToken(nextToken);
     setCurrentView("dashboard");
@@ -363,6 +463,7 @@ export default function BookingApp() {
 
   function clearSession() {
     window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    window.localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
     setUser(null);
     setToken(null);
     setAppointments([]);
@@ -381,8 +482,8 @@ export default function BookingApp() {
     setFeedback(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/users/me`, {
-        method: "DELETE",
+      const response = await fetch(`${API_BASE}/api/users/me/delete-request`, {
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
@@ -390,20 +491,62 @@ export default function BookingApp() {
         body: JSON.stringify(deleteAccountForm),
       });
 
+      const data = await response.json().catch(() => null);
       if (!response.ok) {
-        const data = await response.json().catch(() => null);
         throw new Error(data?.message || "Unable to delete your account.");
       }
 
       setDeleteAccountOpen(false);
       setDeleteAccountForm({ currentPassword: "", confirmation: "" });
-      clearSession();
-      setFeedback("Your account and appointments have been permanently deleted.");
+      setFeedback(data?.message || "Check your email to confirm deletion of your account.");
     } catch (error) {
       setFeedback((error as Error).message);
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleConfirmAccountDeletion() {
+    if (!accountDeletionToken) {
+      setFeedback("This account deletion link is invalid.");
+      return;
+    }
+
+    setLoading(true);
+    setFeedback(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/users/delete-account/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: accountDeletionToken }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.message || "Unable to confirm account deletion.");
+      }
+
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+      window.localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
+      window.history.replaceState({}, "", window.location.pathname);
+      setUser(null);
+      setToken(null);
+      setAppointments([]);
+      setAccountDeletionToken(null);
+      setCurrentView("home");
+      setFeedback(data?.message || "Your account has been permanently deleted.");
+    } catch (error) {
+      setFeedback((error as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function cancelAccountDeletionConfirmation() {
+    window.history.replaceState({}, "", window.location.pathname);
+    setAccountDeletionToken(null);
+    setFeedback(null);
+    setCurrentView(user ? "dashboard" : "home");
   }
 
   async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
@@ -744,7 +887,34 @@ export default function BookingApp() {
       </nav>
 
       <div className="pt-16">
-        {currentView === "login" || currentView === "register" ? (
+        {currentView === "delete-account-confirm" ? (
+          <section className="min-h-[calc(100vh-4rem)] px-6 py-16 flex items-center justify-center">
+            <div className="w-full max-w-xl rounded-3xl border border-red-200 bg-card p-8 text-center shadow-sm">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-700">
+                <Trash2 size={22} />
+              </div>
+              <p className="mt-6 text-sm font-semibold uppercase tracking-[0.2em] text-red-700">My Account</p>
+              <h2 className="mt-2 text-3xl font-bold font-serif text-foreground">Confirm account deletion</h2>
+              <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                This permanently deletes your profile and every appointment linked to it. This action cannot be undone.
+              </p>
+              {feedback ? <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{feedback}</div> : null}
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                <button
+                  type="button"
+                  onClick={handleConfirmAccountDeletion}
+                  disabled={loading || !accountDeletionToken}
+                  className="rounded-xl bg-red-700 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {loading ? "Deleting account..." : "Confirm permanent deletion"}
+                </button>
+                <button type="button" onClick={cancelAccountDeletionConfirmation} className="rounded-xl border border-border px-5 py-3 text-sm font-semibold text-foreground">
+                  Keep my account
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : currentView === "login" || currentView === "register" ? (
           <section className="min-h-[calc(100vh-4rem)] px-6 py-16 flex items-center justify-center">
             <div className="w-full max-w-xl rounded-3xl border border-border bg-card p-8 shadow-sm">
               <div className="mb-8 flex items-center justify-between">
@@ -1017,7 +1187,7 @@ export default function BookingApp() {
                         disabled={loading || deleteAccountForm.confirmation !== "DELETE"}
                         className="rounded-xl bg-red-700 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {loading ? "Deleting account..." : "Permanently delete account"}
+                        {loading ? "Sending email..." : "Send confirmation email"}
                       </button>
                       <button
                         type="button"

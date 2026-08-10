@@ -1,10 +1,13 @@
 import { Router } from "express";
 import argon2 from "argon2";
 import bcrypt from "bcryptjs";
+import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 
 import { prisma } from "../config/prisma.js";
+import { env } from "../config/env.js";
 import { requireAuth } from "../middlewares/auth.js";
+import { sendAccountDeletionEmail } from "../services/email.service.js";
 import { HttpError } from "../utils/http-error.js";
 
 const router = Router();
@@ -26,6 +29,10 @@ const deleteAccountSchema = z.object({
   confirmation: z.literal("DELETE"),
 });
 
+const confirmDeleteAccountSchema = z.object({
+  token: z.string().min(1),
+});
+
 async function verifyPassword(password: string, passwordHash: string) {
   if (passwordHash.startsWith("$2a$") || passwordHash.startsWith("$2b$") || passwordHash.startsWith("$2y$")) {
     return bcrypt.compare(password, passwordHash);
@@ -33,6 +40,40 @@ async function verifyPassword(password: string, passwordHash: string) {
 
   return argon2.verify(passwordHash, password);
 }
+
+function hashAccountDeletionToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+router.post("/delete-account/confirm", async (req, res, next) => {
+  try {
+    const body = confirmDeleteAccountSchema.parse(req.body);
+    const tokenHash = hashAccountDeletionToken(body.token);
+    const storedToken = await prisma.accountDeletionToken.findUnique({
+      where: { tokenHash },
+      include: {
+        user: {
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!storedToken || storedToken.expiresAt < new Date()) {
+      throw new HttpError(400, "This account deletion link is invalid or has expired.");
+    }
+
+    await prisma.user.delete({
+      where: { id: storedToken.user.id },
+    });
+
+    return res.json({
+      success: true,
+      message: "Your account and appointments have been permanently deleted.",
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.use(requireAuth);
 
@@ -128,7 +169,7 @@ router.patch("/me/password", async (req, res, next) => {
   }
 });
 
-router.delete("/me", async (req, res, next) => {
+router.post("/me/delete-request", async (req, res, next) => {
   try {
     const body = deleteAccountSchema.parse(req.body);
     const user = await prisma.user.findUnique({
@@ -148,11 +189,45 @@ router.delete("/me", async (req, res, next) => {
       throw new HttpError(401, "Current password is incorrect.");
     }
 
-    await prisma.user.delete({
+    const account = await prisma.user.findUnique({
       where: { id: user.id },
+      select: {
+        firstName: true,
+        email: true,
+      },
     });
 
-    return res.status(204).send();
+    if (!account) {
+      throw new HttpError(404, "User not found.");
+    }
+
+    const rawToken = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    await prisma.$transaction([
+      prisma.accountDeletionToken.deleteMany({
+        where: { userId: user.id },
+      }),
+      prisma.accountDeletionToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: hashAccountDeletionToken(rawToken),
+          expiresAt,
+        },
+      }),
+    ]);
+
+    const confirmationUrl = `${env.FRONTEND_URL.replace(/\/$/, "")}/?deleteAccountToken=${rawToken}`;
+    await sendAccountDeletionEmail({
+      to: account.email,
+      firstName: account.firstName,
+      confirmationUrl,
+    });
+
+    return res.status(202).json({
+      success: true,
+      message: "Check your email to confirm deletion of your account. The link expires in 30 minutes.",
+    });
   } catch (error) {
     return next(error);
   }

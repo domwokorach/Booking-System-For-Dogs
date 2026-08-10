@@ -99,3 +99,11 @@ export async function sendPasswordResetEmail(data) {
         text: `Hello ${data.firstName},\n\nA password reset was requested for your account.\n\nReset link: ${data.resetUrl}\n\nIf you did not request this, you can ignore this email.`,
     });
 }
+export async function sendAccountDeletionEmail(data) {
+    await sendMailSafely({
+        from: env.EMAIL_FROM,
+        to: data.to,
+        subject: "Confirm account deletion",
+        text: `Hello ${data.firstName},\n\nWe received a request to permanently delete your Pawside account and all associated appointments.\n\nConfirm account deletion: ${data.confirmationUrl}\n\nThis link expires in 30 minutes. Opening the link will not delete your account until you confirm on the page. If you did not request this, you can safely ignore this email.`,
+    });
+}
