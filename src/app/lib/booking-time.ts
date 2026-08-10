@@ -1,3 +1,6 @@
+export const BUSINESS_TIME_ZONE =
+  import.meta.env.VITE_BUSINESS_TIME_ZONE?.trim() || "America/Los_Angeles";
+
 export function resolveAppointmentDateTime(date: Date, slot: string): string {
   const normalizedSlot = slot.trim();
 
@@ -27,6 +30,7 @@ export function formatSlotLabel(slot: string): string {
   }
 
   return value.toLocaleTimeString("en-US", {
+    timeZone: BUSINESS_TIME_ZONE,
     hour: "numeric",
     minute: "2-digit",
     hour12: true,

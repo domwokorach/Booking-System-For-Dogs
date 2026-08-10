@@ -36,7 +36,11 @@ import {
 } from "date-fns";
 import { io } from "socket.io-client";
 import { getStatusStyles } from "./lib/booking-status";
-import { formatSlotLabel, resolveAppointmentDateTime } from "./lib/booking-time";
+import {
+  BUSINESS_TIME_ZONE,
+  formatSlotLabel,
+  resolveAppointmentDateTime,
+} from "./lib/booking-time";
 
 type ServiceId = "grooming" | "training" | "daycare" | "boarding";
 type AuthMode = "login" | "register";
@@ -59,6 +63,7 @@ interface UserProfile {
 
 interface AppointmentRecord {
   id: string;
+  serviceId?: string | null;
   dateTime: string;
   status: string;
   service?: string | null;
@@ -192,7 +197,29 @@ function formatAppointmentDate(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: BUSINESS_TIME_ZONE,
   }).format(new Date(value));
+}
+
+function appointmentBusinessDate(value: string): Date {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: BUSINESS_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+      .formatToParts(new Date(value))
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return new Date(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
+}
+
+function parseDateInput(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
 }
 
 export default function BookingApp() {
@@ -226,6 +253,7 @@ export default function BookingApp() {
   const [editingAppointmentId, setEditingAppointmentId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState({ service: null as ServiceId | null, notes: "" });
   const [rescheduleAppointmentId, setRescheduleAppointmentId] = useState<string | null>(null);
+  const [rescheduleServiceId, setRescheduleServiceId] = useState<string | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState<Date | null>(null);
   const [rescheduleSlots, setRescheduleSlots] = useState<string[]>([]);
   const [rescheduleTime, setRescheduleTime] = useState<string | null>(null);
@@ -427,14 +455,14 @@ export default function BookingApp() {
   }, [token]);
 
   useEffect(() => {
-    if (!selectedDate) {
+    if (!selectedDate || !booking.service) {
       setAvailableSlots([]);
       return;
     }
 
     const dateKey = format(selectedDate, "yyyy-MM-dd");
-    void fetchAvailableSlots(dateKey);
-  }, [selectedDate]);
+    void fetchAvailableSlots(dateKey, booking.service);
+  }, [selectedDate, booking.service]);
 
   async function loadAppointments() {
     if (!token) {
@@ -457,14 +485,14 @@ export default function BookingApp() {
     }
   }
 
-  async function fetchAvailableSlots(dateKey: string) {
+  async function fetchAvailableSlots(dateKey: string, serviceId: ServiceId) {
     try {
-      const response = await fetch(`${API_BASE}/api/appointments/available?date=${dateKey}`);
+      const response = await fetch(`${API_BASE}/api/slots?serviceId=${encodeURIComponent(serviceId)}&date=${dateKey}`);
       if (!response.ok) {
         throw new Error("Unable to load slots.");
       }
-      const data = (await response.json()) as { availableTimes: string[] };
-      setAvailableSlots(data.availableTimes);
+      const data = (await response.json()) as { slots: Array<{ startAt: string }> };
+      setAvailableSlots(data.slots.map((slot) => slot.startAt));
     } catch {
       setAvailableSlots([]);
     }
@@ -846,6 +874,7 @@ export default function BookingApp() {
         throw new Error(data.message || "Unable to reschedule the appointment.");
       }
       setRescheduleAppointmentId(null);
+      setRescheduleServiceId(null);
       setRescheduleDate(null);
       setRescheduleTime(null);
       setFeedback("Appointment rescheduled.");
@@ -858,23 +887,23 @@ export default function BookingApp() {
   }
 
   useEffect(() => {
-    if (!rescheduleDate) {
+    if (!rescheduleDate || !rescheduleServiceId) {
       setRescheduleSlots([]);
       return;
     }
 
     const dateKey = format(rescheduleDate, "yyyy-MM-dd");
-    void fetchRescheduleSlots(dateKey);
-  }, [rescheduleDate]);
+    void fetchRescheduleSlots(dateKey, rescheduleServiceId);
+  }, [rescheduleDate, rescheduleServiceId]);
 
-  async function fetchRescheduleSlots(dateKey: string) {
+  async function fetchRescheduleSlots(dateKey: string, serviceId: string) {
     try {
-      const response = await fetch(`${API_BASE}/api/appointments/available?date=${dateKey}`);
+      const response = await fetch(`${API_BASE}/api/slots?serviceId=${encodeURIComponent(serviceId)}&date=${dateKey}`);
       if (!response.ok) {
         throw new Error("Unable to load reschedule slots.");
       }
-      const data = (await response.json()) as { availableTimes: string[] };
-      setRescheduleSlots(data.availableTimes);
+      const data = (await response.json()) as { slots: Array<{ startAt: string }> };
+      setRescheduleSlots(data.slots.map((slot) => slot.startAt));
     } catch {
       setRescheduleSlots([]);
     }
@@ -1090,8 +1119,8 @@ export default function BookingApp() {
                                 {deletionRequested ? "Delete requested" : "Delete"}
                               </span>
                             </button>
-                            <button onClick={() => { setEditingAppointmentId(appointment.id); setEditDraft({ service: (appointment.service as ServiceId) || null, notes: appointment.notes || "" }); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Edit</button>
-                            <button onClick={() => { setRescheduleAppointmentId(appointment.id); setRescheduleDate(new Date(appointment.dateTime)); setRescheduleTime(null); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Reschedule</button>
+                            <button onClick={() => { setEditingAppointmentId(appointment.id); setEditDraft({ service: (appointment.serviceId ?? SERVICES.find((service) => service.name === appointment.service)?.id ?? null) as ServiceId | null, notes: appointment.notes || "" }); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Edit</button>
+                            <button onClick={() => { setRescheduleAppointmentId(appointment.id); setRescheduleServiceId(appointment.serviceId ?? SERVICES.find((service) => service.name === appointment.service)?.id ?? null); setRescheduleDate(appointmentBusinessDate(appointment.dateTime)); setRescheduleTime(null); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Reschedule</button>
                           </div>
                           {deletionRequested ? (
                             <p className="mt-3 text-sm text-muted-foreground">A deletion request has been sent to Dominic for approval. The appointment will remain until it is approved and removed.</p>
@@ -1111,7 +1140,7 @@ export default function BookingApp() {
                           ) : null}
                           {isRescheduling ? (
                             <div className="mt-4 rounded-2xl border border-border bg-card p-4">
-                              <input type="date" value={rescheduleDate ? format(rescheduleDate, "yyyy-MM-dd") : ""} onChange={(event) => setRescheduleDate(new Date(event.target.value))} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" />
+                              <input type="date" value={rescheduleDate ? format(rescheduleDate, "yyyy-MM-dd") : ""} onChange={(event) => setRescheduleDate(event.target.value ? parseDateInput(event.target.value) : null)} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" />
                               <div className="mt-3 grid grid-cols-2 gap-2">
                                 {rescheduleSlots.length === 0 ? <p className="col-span-2 text-sm text-muted-foreground">Choose a date to see available times.</p> : rescheduleSlots.map((slot) => (
                                   <button key={slot} onClick={() => setRescheduleTime(slot)} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${rescheduleTime === slot ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background"}`}>{formatSlotLabel(slot)}</button>
@@ -1119,7 +1148,7 @@ export default function BookingApp() {
                               </div>
                               <div className="mt-3 flex gap-2">
                                 <button onClick={() => handleRescheduleAppointment(appointment.id)} className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">Save reschedule</button>
-                                <button onClick={() => { setRescheduleAppointmentId(null); setRescheduleDate(null); setRescheduleTime(null); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Cancel</button>
+                                <button onClick={() => { setRescheduleAppointmentId(null); setRescheduleServiceId(null); setRescheduleDate(null); setRescheduleTime(null); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Cancel</button>
                               </div>
                             </div>
                           ) : null}

@@ -65,6 +65,12 @@ function buildObjectKey(filename: string): string {
 }
 
 async function writeToLocalFallback(key: string, buffer: Buffer) {
+  if (env.NODE_ENV === "production") {
+    throw new Error(
+      "Cloud storage credentials are required in production; local uploads are not durable.",
+    );
+  }
+
   const uploadDir = join(process.cwd(), "uploads");
   const outputPath = join(uploadDir, key);
   await mkdir(dirname(outputPath), { recursive: true });

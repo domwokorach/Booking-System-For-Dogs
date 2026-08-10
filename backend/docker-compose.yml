@@ -11,6 +11,12 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dog_booking"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
 
   backend:
     build:
@@ -19,7 +25,8 @@ services:
     container_name: dog-booking-backend
     restart: unless-stopped
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     env_file:
       - .env
     environment:
@@ -27,16 +34,6 @@ services:
       PORT: 4000
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/dog_booking
       CLIENT_ORIGIN: http://localhost:5173
-      JWT_SECRET: change-me-in-production-1234567890
-      JWT_EXPIRES_IN: 7d
-      STORAGE_PROVIDER: s3
-      AWS_REGION: us-east-1
-      AWS_S3_BUCKET: ""
-      AWS_ACCESS_KEY_ID: ""
-      AWS_SECRET_ACCESS_KEY: ""
-      GCP_PROJECT_ID: ""
-      GCP_BUCKET: ""
-      GCP_KEY_FILE: ""
     ports:
       - "4000:4000"
 

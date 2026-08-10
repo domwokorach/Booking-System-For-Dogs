@@ -11,7 +11,7 @@ const SERVICE_LABELS: Record<string, string> = {
 async function sendMailSafely(mail: { from: string; to: string; subject: string; text: string; html?: string }) {
   if (!resendApiKey) {
     console.warn("RESEND_API_KEY is not configured. Skipping email send.");
-    return;
+    return false;
   }
 
   try {
@@ -34,8 +34,10 @@ async function sendMailSafely(mail: { from: string; to: string; subject: string;
       const errorData = await response.text();
       throw new Error(`Resend API error ${response.status}: ${errorData}`);
     }
+    return true;
   } catch (error) {
     console.error("Email delivery failed.", error);
+    return false;
   }
 }
 
@@ -52,18 +54,21 @@ function formatDateTime(value: Date): string {
   return new Intl.DateTimeFormat("en-US", {
     dateStyle: "full",
     timeStyle: "short",
+    timeZone: env.BUSINESS_TIME_ZONE,
   }).format(value);
 }
 
 function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("en-US", {
     dateStyle: "full",
+    timeZone: env.BUSINESS_TIME_ZONE,
   }).format(value);
 }
 
 function formatTime(value: Date): string {
   return new Intl.DateTimeFormat("en-US", {
     timeStyle: "short",
+    timeZone: env.BUSINESS_TIME_ZONE,
   }).format(value);
 }
 
@@ -93,7 +98,7 @@ function resolveBookingRecipients(userRecipient: string): string[] {
 }
 
 export async function sendBookingConfirmationEmail(data: BookingEmailData) {
-  await Promise.all(
+  const results = await Promise.all(
     resolveBookingRecipients(data.to).map((recipient) =>
       sendMailSafely({
         from: env.EMAIL_FROM,
@@ -103,10 +108,11 @@ export async function sendBookingConfirmationEmail(data: BookingEmailData) {
       }),
     ),
   );
+  return results.every(Boolean);
 }
 
 export async function sendBookingUpdateEmail(data: BookingEmailData) {
-  await sendMailSafely({
+  return sendMailSafely({
     from: env.EMAIL_FROM,
     to: data.to,
     subject: "Booking updated",
@@ -115,7 +121,7 @@ export async function sendBookingUpdateEmail(data: BookingEmailData) {
 }
 
 export async function sendBookingCancellationEmail(data: BookingEmailData) {
-  await Promise.all(
+  const results = await Promise.all(
     resolveBookingRecipients(data.to).map((recipient) =>
       sendMailSafely({
         from: env.EMAIL_FROM,
@@ -125,10 +131,11 @@ export async function sendBookingCancellationEmail(data: BookingEmailData) {
       }),
     ),
   );
+  return results.every(Boolean);
 }
 
 export async function sendDeletionRequestEmail(data: BookingEmailData) {
-  await sendMailSafely({
+  return sendMailSafely({
     from: env.EMAIL_FROM,
     to: resolveBookingRecipient(data.to),
     subject: "Deletion approval requested",
@@ -143,7 +150,7 @@ type PasswordResetEmailData = {
 };
 
 export async function sendPasswordResetEmail(data: PasswordResetEmailData) {
-  await sendMailSafely({
+  return sendMailSafely({
     from: env.EMAIL_FROM,
     to: data.to,
     subject: "Reset your password",
@@ -157,7 +164,7 @@ type AccountDeletionRequestEmailData = {
   requestId: string;
   confirmationUrl: string;
   cancellationUrl: string;
-  adminRecipient: string;
+  adminRecipient?: string;
 };
 
 export async function sendAccountDeletionRequestEmails(data: AccountDeletionRequestEmailData) {
@@ -165,19 +172,27 @@ export async function sendAccountDeletionRequestEmails(data: AccountDeletionRequ
   const safeConfirmationUrl = escapeHtml(data.confirmationUrl);
   const safeCancellationUrl = escapeHtml(data.cancellationUrl);
 
-  await Promise.all([
-    sendMailSafely({
-      from: env.EMAIL_FROM,
-      to: data.to,
-      subject: "Account deletion request received",
-      text: `Hello ${data.firstName},\n\nWe received a request to permanently delete your Pawside account and all associated appointments. The request status is PENDING.\n\nConfirm deletion: ${data.confirmationUrl}\n\nCancel Delete Request: ${data.cancellationUrl}\n\nBoth links expire in 30 minutes. Your account remains active unless deletion is confirmed.`,
-      html: `<p>Hello ${safeFirstName},</p><p>We received a request to permanently delete your Pawside account and all associated appointments.</p><p><strong>Status: PENDING</strong></p><p><a href="${safeConfirmationUrl}" style="display:inline-block;padding:12px 18px;background:#b91c1c;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Review deletion request</a></p><p><a href="${safeCancellationUrl}" style="display:inline-block;padding:12px 18px;background:#166534;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Cancel Delete Request</a></p><p>Both links expire in 30 minutes. Your account remains active unless deletion is confirmed.</p>`,
-    }),
-    sendMailSafely({
-      from: env.EMAIL_FROM,
-      to: data.adminRecipient,
-      subject: "Pawside account deletion request",
-      text: `An account deletion request was submitted.\n\nRequest ID: ${data.requestId}\nUser: ${data.firstName}\nEmail: ${data.to}\nStatus: PENDING\n\nThe user has been sent confirmation and cancellation links.`,
-    }),
-  ]);
+  const userDelivery = sendMailSafely({
+    from: env.EMAIL_FROM,
+    to: data.to,
+    subject: "Account deletion request received",
+    text: `Hello ${data.firstName},\n\nWe received a request to permanently delete your Pawside account and all associated appointments. The request status is PENDING.\n\nConfirm deletion: ${data.confirmationUrl}\n\nCancel Delete Request: ${data.cancellationUrl}\n\nBoth links expire in 30 minutes. Your account remains active unless deletion is confirmed.`,
+    html: `<p>Hello ${safeFirstName},</p><p>We received a request to permanently delete your Pawside account and all associated appointments.</p><p><strong>Status: PENDING</strong></p><p><a href="${safeConfirmationUrl}" style="display:inline-block;padding:12px 18px;background:#b91c1c;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Review deletion request</a></p><p><a href="${safeCancellationUrl}" style="display:inline-block;padding:12px 18px;background:#166534;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Cancel Delete Request</a></p><p>Both links expire in 30 minutes. Your account remains active unless deletion is confirmed.</p>`,
+  });
+
+  const emails = [userDelivery];
+
+  if (data.adminRecipient) {
+    emails.push(
+      sendMailSafely({
+        from: env.EMAIL_FROM,
+        to: data.adminRecipient,
+        subject: "Pawside account deletion request",
+        text: `An account deletion request was submitted.\n\nRequest ID: ${data.requestId}\nUser: ${data.firstName}\nEmail: ${data.to}\nStatus: PENDING\n\nThe user has been sent confirmation and cancellation links.`,
+      }),
+    );
+  }
+
+  const [deliveredToUser] = await Promise.all(emails);
+  return deliveredToUser;
 }
