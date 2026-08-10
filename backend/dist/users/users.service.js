@@ -227,8 +227,8 @@ let UsersService = class UsersService {
             status: "PENDING",
             emailDelivered,
             message: emailDelivered
-                ? "Your deletion request is pending. Check your email to confirm or cancel it within 30 minutes."
-                : "Your deletion request is pending, but the confirmation email could not be delivered. Contact support before the request expires.",
+                ? "Your deletion request is pending approval. Dominic has been notified."
+                : "Your deletion request is pending approval, but the approval email could not be delivered. Contact support before the request expires.",
         };
     }
     hashAccountDeletionToken(token) {

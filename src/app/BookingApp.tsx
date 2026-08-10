@@ -543,7 +543,7 @@ export default function BookingApp() {
 
       setDeleteAccountOpen(false);
       setDeleteAccountForm({ currentPassword: "", confirmation: "" });
-      setFeedback(data?.message || "Check your email to confirm deletion of your account.");
+      setFeedback(data?.message || "Your deletion request is pending approval.");
     } catch (error) {
       setFeedback((error as Error).message);
     } finally {
@@ -1001,9 +1001,9 @@ export default function BookingApp() {
                 <Trash2 size={22} />
               </div>
               <p className="mt-6 text-sm font-semibold uppercase tracking-[0.2em] text-red-700">My Account</p>
-              <h2 className="mt-2 text-3xl font-bold font-serif text-foreground">Confirm account deletion</h2>
+              <h2 className="mt-2 text-3xl font-bold font-serif text-foreground">Review account deletion request</h2>
               <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                This permanently deletes your profile and every appointment linked to it. This action cannot be undone.
+                This permanently deletes the user profile and every appointment linked to it. Approve only if you want the deletion to proceed.
               </p>
               {feedback ? <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{feedback}</div> : null}
               <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
@@ -1013,10 +1013,10 @@ export default function BookingApp() {
                   disabled={loading || !accountDeletionToken}
                   className="rounded-xl bg-red-700 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
                 >
-                  {loading ? "Deleting account..." : "Confirm permanent deletion"}
+                  {loading ? "Deleting account..." : "Approve and delete account"}
                 </button>
                 <button type="button" onClick={cancelAccountDeletionConfirmation} className="rounded-xl border border-border px-5 py-3 text-sm font-semibold text-foreground">
-                  Not now
+                  Keep account active
                 </button>
               </div>
             </div>
@@ -1264,7 +1264,7 @@ export default function BookingApp() {
 
                 {deleteAccountOpen ? (
                   <form onSubmit={handleDeleteAccount} className="mt-6 max-w-xl space-y-4 rounded-2xl border border-red-200 bg-white p-5">
-                    <p className="text-sm font-semibold text-red-800">Confirm permanent account deletion</p>
+                    <p className="text-sm font-semibold text-red-800">Request permanent account deletion</p>
                     <div>
                       <label htmlFor="delete-account-password" className="mb-1.5 block text-sm font-medium text-foreground">Current password</label>
                       <input
@@ -1294,7 +1294,7 @@ export default function BookingApp() {
                         disabled={loading || deleteAccountForm.confirmation !== "DELETE"}
                         className="rounded-xl bg-red-700 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {loading ? "Sending email..." : "Send confirmation email"}
+                        {loading ? "Sending request..." : "Submit deletion request"}
                       </button>
                       <button
                         type="button"
