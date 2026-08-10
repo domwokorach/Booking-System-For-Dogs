@@ -46,6 +46,13 @@ let ApiExceptionFilter = ApiExceptionFilter_1 = class ApiExceptionFilter {
             });
             return;
         }
+        if (exception instanceof Prisma.PrismaClientUnknownRequestError &&
+            exception.message.includes("Appointment_no_active_time_overlap")) {
+            response.status(HttpStatus.CONFLICT).json({
+                message: "Sorry, this appointment time is no longer available.",
+            });
+            return;
+        }
         this.logger.error(exception instanceof Error ? exception.stack : String(exception));
         response
             .status(HttpStatus.INTERNAL_SERVER_ERROR)

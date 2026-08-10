@@ -88,36 +88,37 @@ let AppointmentSlotsService = class AppointmentSlotsService {
     constructor(prisma) {
         this.prisma = prisma;
     }
-    async getAvailableTimes(date, durationMinutes = 60) {
+    async getAvailableTimes(date, durationMinutes = 60, excludeAppointmentId) {
         const dateKey = typeof date === "string" ? date : date.toISOString().slice(0, 10);
         if (isSunday(dateKey)) {
             return [];
         }
         const allSlots = BUSINESS_HOURS.map((hour) => createBusinessDateTime(dateKey, hour));
-        const maximumDuration = await this.getMaximumServiceDuration();
+        const maximumDuration = await this.getMaximumDuration();
         const scanStart = new Date(allSlots[0].getTime() - maximumDuration * 60_000);
         const scanEnd = new Date(allSlots.at(-1).getTime() + durationMinutes * 60_000);
         const appointments = await this.prisma.appointment.findMany({
             where: {
+                id: excludeAppointmentId ? { not: excludeAppointmentId } : undefined,
                 dateTime: { gte: scanStart, lt: scanEnd },
                 status: { in: ACTIVE_APPOINTMENT_STATUSES },
             },
             select: {
                 dateTime: true,
-                serviceRef: { select: { durationMinutes: true } },
+                durationMinutes: true,
             },
         });
         const now = Date.now();
         return allSlots
             .filter((slot) => slot.getTime() > now &&
-            !appointments.some((appointment) => overlaps(slot, durationMinutes, appointment.dateTime, appointment.serviceRef?.durationMinutes ?? 60)))
+            !appointments.some((appointment) => overlaps(slot, durationMinutes, appointment.dateTime, appointment.durationMinutes)))
             .map((slot) => slot.toISOString());
     }
     async isAvailable(dateTime, excludeAppointmentId, durationMinutes = 60) {
         if (!this.isBookableSlot(dateTime)) {
             return false;
         }
-        const maximumDuration = await this.getMaximumServiceDuration();
+        const maximumDuration = await this.getMaximumDuration();
         const existing = await this.prisma.appointment.findMany({
             where: {
                 id: excludeAppointmentId ? { not: excludeAppointmentId } : undefined,
@@ -129,10 +130,10 @@ let AppointmentSlotsService = class AppointmentSlotsService {
             },
             select: {
                 dateTime: true,
-                serviceRef: { select: { durationMinutes: true } },
+                durationMinutes: true,
             },
         });
-        return !existing.some((appointment) => overlaps(dateTime, durationMinutes, appointment.dateTime, appointment.serviceRef?.durationMinutes ?? 60));
+        return !existing.some((appointment) => overlaps(dateTime, durationMinutes, appointment.dateTime, appointment.durationMinutes));
     }
     async withAvailableSlot(input, operation) {
         if (!this.isBookableSlot(input.dateTime)) {
@@ -148,7 +149,7 @@ let AppointmentSlotsService = class AppointmentSlotsService {
           SELECT pg_advisory_xact_lock(hashtext(${`appointment-slots:${dateKey}`}))
         `;
             }
-            const maximumDuration = await this.getMaximumServiceDuration(transaction);
+            const maximumDuration = await this.getMaximumDuration(transaction);
             const appointments = await transaction.appointment.findMany({
                 where: {
                     id: input.excludeAppointmentId
@@ -162,10 +163,10 @@ let AppointmentSlotsService = class AppointmentSlotsService {
                 },
                 select: {
                     dateTime: true,
-                    serviceRef: { select: { durationMinutes: true } },
+                    durationMinutes: true,
                 },
             });
-            const unavailable = appointments.some((appointment) => overlaps(input.dateTime, input.durationMinutes, appointment.dateTime, appointment.serviceRef?.durationMinutes ?? 60));
+            const unavailable = appointments.some((appointment) => overlaps(input.dateTime, input.durationMinutes, appointment.dateTime, appointment.durationMinutes));
             if (unavailable) {
                 throw new ConflictException(input.conflictMessage);
             }
@@ -188,12 +189,16 @@ let AppointmentSlotsService = class AppointmentSlotsService {
         const expected = createBusinessDateTime(toDateKey(parts), parts.hour);
         return expected.getTime() === dateTime.getTime();
     }
-    async getMaximumServiceDuration(transaction) {
+    async getMaximumDuration(transaction) {
         const client = transaction ?? this.prisma;
-        const result = await client.service.aggregate({
+        const serviceResult = await client.service.aggregate({
             _max: { durationMinutes: true },
         });
-        return Math.max(result._max.durationMinutes ?? 60, 60);
+        const appointmentResult = await client.appointment.aggregate({
+            where: { status: { in: ACTIVE_APPOINTMENT_STATUSES } },
+            _max: { durationMinutes: true },
+        });
+        return Math.max(serviceResult._max.durationMinutes ?? 60, appointmentResult._max.durationMinutes ?? 60, 60);
     }
 };
 AppointmentSlotsService = __decorate([

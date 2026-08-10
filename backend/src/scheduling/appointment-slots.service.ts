@@ -129,6 +129,7 @@ export class AppointmentSlotsService {
   async getAvailableTimes(
     date: Date | string,
     durationMinutes = 60,
+    excludeAppointmentId?: string,
   ): Promise<string[]> {
     const dateKey =
       typeof date === "string" ? date : date.toISOString().slice(0, 10);
@@ -140,7 +141,7 @@ export class AppointmentSlotsService {
     const allSlots = BUSINESS_HOURS.map((hour) =>
       createBusinessDateTime(dateKey, hour),
     );
-    const maximumDuration = await this.getMaximumServiceDuration();
+    const maximumDuration = await this.getMaximumDuration();
     const scanStart = new Date(
       allSlots[0].getTime() - maximumDuration * 60_000,
     );
@@ -149,12 +150,13 @@ export class AppointmentSlotsService {
     );
     const appointments = await this.prisma.appointment.findMany({
       where: {
+        id: excludeAppointmentId ? { not: excludeAppointmentId } : undefined,
         dateTime: { gte: scanStart, lt: scanEnd },
         status: { in: ACTIVE_APPOINTMENT_STATUSES },
       },
       select: {
         dateTime: true,
-        serviceRef: { select: { durationMinutes: true } },
+        durationMinutes: true,
       },
     });
     const now = Date.now();
@@ -168,7 +170,7 @@ export class AppointmentSlotsService {
               slot,
               durationMinutes,
               appointment.dateTime,
-              appointment.serviceRef?.durationMinutes ?? maximumDuration,
+              appointment.durationMinutes,
             ),
           ),
       )
@@ -184,7 +186,7 @@ export class AppointmentSlotsService {
       return false;
     }
 
-    const maximumDuration = await this.getMaximumServiceDuration();
+    const maximumDuration = await this.getMaximumDuration();
     const existing = await this.prisma.appointment.findMany({
       where: {
         id: excludeAppointmentId ? { not: excludeAppointmentId } : undefined,
@@ -196,7 +198,7 @@ export class AppointmentSlotsService {
       },
       select: {
         dateTime: true,
-        serviceRef: { select: { durationMinutes: true } },
+        durationMinutes: true,
       },
     });
 
@@ -205,7 +207,7 @@ export class AppointmentSlotsService {
         dateTime,
         durationMinutes,
         appointment.dateTime,
-        appointment.serviceRef?.durationMinutes ?? maximumDuration,
+        appointment.durationMinutes,
       ),
     );
   }
@@ -232,7 +234,7 @@ export class AppointmentSlotsService {
         `;
       }
 
-      const maximumDuration = await this.getMaximumServiceDuration(transaction);
+      const maximumDuration = await this.getMaximumDuration(transaction);
       const appointments = await transaction.appointment.findMany({
         where: {
           id: input.excludeAppointmentId
@@ -248,7 +250,7 @@ export class AppointmentSlotsService {
         },
         select: {
           dateTime: true,
-          serviceRef: { select: { durationMinutes: true } },
+          durationMinutes: true,
         },
       });
 
@@ -257,7 +259,7 @@ export class AppointmentSlotsService {
           input.dateTime,
           input.durationMinutes,
           appointment.dateTime,
-          appointment.serviceRef?.durationMinutes ?? maximumDuration,
+          appointment.durationMinutes,
         ),
       );
       if (unavailable) {
@@ -291,13 +293,21 @@ export class AppointmentSlotsService {
     return expected.getTime() === dateTime.getTime();
   }
 
-  private async getMaximumServiceDuration(
+  private async getMaximumDuration(
     transaction?: Prisma.TransactionClient,
   ): Promise<number> {
     const client = transaction ?? this.prisma;
-    const result = await client.service.aggregate({
+    const serviceResult = await client.service.aggregate({
       _max: { durationMinutes: true },
     });
-    return Math.max(result._max.durationMinutes ?? 60, 60);
+    const appointmentResult = await client.appointment.aggregate({
+      where: { status: { in: ACTIVE_APPOINTMENT_STATUSES } },
+      _max: { durationMinutes: true },
+    });
+    return Math.max(
+      serviceResult._max.durationMinutes ?? 60,
+      appointmentResult._max.durationMinutes ?? 60,
+      60,
+    );
   }
 }

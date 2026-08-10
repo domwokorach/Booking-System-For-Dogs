@@ -45,6 +45,10 @@ let AppointmentsController = class AppointmentsController {
     listMine(user) {
         return this.appointmentsService.listMine(user);
     }
+    availableForReschedule(user, id, query) {
+        const { date } = availableAppointmentsQuerySchema.parse(query);
+        return this.appointmentsService.availableForReschedule(user, id, date);
+    }
     create(user, body) {
         return this.appointmentsService.create(user, createAppointmentSchema.parse(body));
     }
@@ -83,6 +87,15 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], AppointmentsController.prototype, "listMine", null);
+__decorate([
+    Get(":id/slots"),
+    __param(0, CurrentUser()),
+    __param(1, Param("id")),
+    __param(2, Query()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", void 0)
+], AppointmentsController.prototype, "availableForReschedule", null);
 __decorate([
     Post(),
     __param(0, CurrentUser()),

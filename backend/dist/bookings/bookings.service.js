@@ -14,7 +14,7 @@ import { EmailService } from "../notifications/email.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { RealtimeGateway } from "../realtime/realtime.gateway.js";
 import { AppointmentSlotsService } from "../scheduling/appointment-slots.service.js";
-import { parseSlotId, toApiStatus, toBookingDto, toBookingMutationResponse, } from "./booking-mappers.js";
+import { parseSlotId, formatTime, toApiStatus, toBookingDto, toBookingMutationResponse, } from "./booking-mappers.js";
 const bookingUserSelect = {
     id: true,
     firstName: true,
@@ -52,6 +52,7 @@ let BookingsService = class BookingsService {
                     dateTime: slot.dateTime,
                     serviceId: service.id,
                     service: service.name,
+                    durationMinutes: service.durationMinutes,
                     status: AppointmentStatus.Confirmed,
                     confirmedAt: new Date(),
                 },
@@ -94,6 +95,31 @@ let BookingsService = class BookingsService {
         }
         return { booking: toBookingDto(appointment) };
     }
+    async availableForReschedule(user, id, query) {
+        const existing = await this.findOwnedWithUser(user.id, id);
+        if (existing.status === AppointmentStatus.Cancelled) {
+            throw new BadRequestException("Cancelled bookings cannot be rescheduled.");
+        }
+        const service = await this.resolveActiveService(query.serviceId);
+        const availableTimes = await this.appointmentSlots.getAvailableTimes(query.date, service.durationMinutes, existing.id);
+        return {
+            bookingId: existing.id,
+            serviceId: service.id,
+            date: query.date,
+            slots: availableTimes.map((isoDateTime) => {
+                const startAt = new Date(isoDateTime);
+                return {
+                    id: `${service.id}|${isoDateTime}`,
+                    serviceId: service.id,
+                    date: query.date,
+                    time: formatTime(startAt),
+                    startAt: isoDateTime,
+                    endAt: new Date(startAt.getTime() + service.durationMinutes * 60_000).toISOString(),
+                    active: true,
+                };
+            }),
+        };
+    }
     async confirm(user, id) {
         const existing = await this.findOwnedWithUser(user.id, id);
         if (existing.status === AppointmentStatus.Cancelled) {
@@ -102,21 +128,25 @@ let BookingsService = class BookingsService {
         if (existing.status === AppointmentStatus.Confirmed) {
             return toBookingMutationResponse(existing, "Appointment confirmed successfully");
         }
-        const changed = await this.prisma.appointment.updateMany({
-            where: {
-                id,
-                userId: user.id,
-                status: { not: AppointmentStatus.Cancelled },
-            },
-            data: {
-                status: AppointmentStatus.Confirmed,
-                confirmedAt: new Date(),
-            },
+        const updated = await this.prisma.$transaction(async (transaction) => {
+            const changed = await transaction.appointment.updateMany({
+                where: {
+                    id,
+                    userId: user.id,
+                    status: existing.status,
+                    dateTime: existing.dateTime,
+                    updatedAt: existing.updatedAt,
+                },
+                data: {
+                    status: AppointmentStatus.Confirmed,
+                    confirmedAt: new Date(),
+                },
+            });
+            if (changed.count !== 1) {
+                throw new ConflictException("The booking state changed. Please retry.");
+            }
+            return this.findOwnedWithUser(user.id, id, transaction);
         });
-        if (changed.count !== 1) {
-            throw new ConflictException("The booking state changed. Please retry.");
-        }
-        const updated = await this.findOwnedWithUser(user.id, id);
         await this.email.sendBookingConfirmation({
             to: updated.user.email,
             firstName: updated.user.firstName,
@@ -139,8 +169,9 @@ let BookingsService = class BookingsService {
         if (existing.status === AppointmentStatus.Cancelled) {
             throw new BadRequestException("Cancelled bookings cannot be rescheduled.");
         }
+        let updated;
         try {
-            await this.appointmentSlots.withAvailableSlot({
+            updated = await this.appointmentSlots.withAvailableSlot({
                 dateTime: slot.dateTime,
                 durationMinutes: service.durationMinutes,
                 excludeAppointmentId: id,
@@ -150,12 +181,15 @@ let BookingsService = class BookingsService {
                     where: {
                         id,
                         userId: user.id,
-                        status: { not: AppointmentStatus.Cancelled },
+                        status: existing.status,
+                        dateTime: existing.dateTime,
+                        updatedAt: existing.updatedAt,
                     },
                     data: {
                         dateTime: slot.dateTime,
                         serviceId: service.id,
                         service: service.name,
+                        durationMinutes: service.durationMinutes,
                         status: AppointmentStatus.Rescheduled,
                         rescheduledFrom: existing.dateTime,
                     },
@@ -163,12 +197,12 @@ let BookingsService = class BookingsService {
                 if (changed.count !== 1) {
                     throw new ConflictException("The booking state changed. Please retry.");
                 }
+                return this.findOwnedWithUser(user.id, id, transaction);
             });
         }
         catch (error) {
             this.rethrowSlotConflict(error);
         }
-        const updated = await this.findOwnedWithUser(user.id, id);
         await this.email.sendBookingUpdate({
             to: updated.user.email,
             firstName: updated.user.firstName,
@@ -187,21 +221,25 @@ let BookingsService = class BookingsService {
         if (existing.status === AppointmentStatus.Cancelled) {
             return toBookingMutationResponse(existing, "Appointment cancelled successfully");
         }
-        const changed = await this.prisma.appointment.updateMany({
-            where: {
-                id,
-                userId: user.id,
-                status: { not: AppointmentStatus.Cancelled },
-            },
-            data: {
-                status: AppointmentStatus.Cancelled,
-                cancelledAt: new Date(),
-            },
+        const updated = await this.prisma.$transaction(async (transaction) => {
+            const changed = await transaction.appointment.updateMany({
+                where: {
+                    id,
+                    userId: user.id,
+                    status: existing.status,
+                    dateTime: existing.dateTime,
+                    updatedAt: existing.updatedAt,
+                },
+                data: {
+                    status: AppointmentStatus.Cancelled,
+                    cancelledAt: new Date(),
+                },
+            });
+            if (changed.count !== 1) {
+                throw new ConflictException("The booking state changed. Please retry.");
+            }
+            return this.findOwnedWithUser(user.id, id, transaction);
         });
-        if (changed.count !== 1) {
-            throw new ConflictException("The booking state changed. Please retry.");
-        }
-        const updated = await this.findOwnedWithUser(user.id, id);
         await this.email.sendBookingCancellation({
             to: updated.user.email,
             firstName: updated.user.firstName,
@@ -255,14 +293,19 @@ let BookingsService = class BookingsService {
         if (existing.deleteRequestedAt) {
             return { message: "Deletion request already sent." };
         }
-        const changed = await this.prisma.appointment.updateMany({
-            where: { id, userId: user.id, deleteRequestedAt: null },
-            data: { deleteRequestedAt: new Date() },
+        const updated = await this.prisma.$transaction(async (transaction) => {
+            const changed = await transaction.appointment.updateMany({
+                where: { id, userId: user.id, deleteRequestedAt: null },
+                data: { deleteRequestedAt: new Date() },
+            });
+            if (changed.count !== 1) {
+                return null;
+            }
+            return this.findOwnedWithUser(user.id, id, transaction);
         });
-        if (changed.count !== 1) {
+        if (!updated) {
             return { message: "Deletion request already sent." };
         }
-        const updated = await this.findOwnedWithUser(user.id, id);
         await this.email.sendDeletionRequest({
             to: updated.user.email,
             firstName: updated.user.firstName,
@@ -293,8 +336,8 @@ let BookingsService = class BookingsService {
         }
         return service;
     }
-    async findOwnedWithUser(userId, id) {
-        const appointment = await this.prisma.appointment.findFirst({
+    async findOwnedWithUser(userId, id, client = this.prisma) {
+        const appointment = await client.appointment.findFirst({
             where: { id, userId },
             include: { user: { select: bookingUserSelect } },
         });
@@ -310,8 +353,10 @@ let BookingsService = class BookingsService {
         }
     }
     rethrowSlotConflict(error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError &&
-            error.code === "P2002") {
+        if ((error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === "P2002") ||
+            (error instanceof Prisma.PrismaClientUnknownRequestError &&
+                error.message.includes("Appointment_no_active_time_overlap"))) {
             throw new ConflictException("Sorry, this appointment has already been booked.");
         }
         throw error;

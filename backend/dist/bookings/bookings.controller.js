@@ -10,10 +10,10 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-import { Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, Param, Patch, Post, UseGuards, } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards, } from "@nestjs/common";
 import { CurrentUser } from "../auth/current-user.decorator.js";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard.js";
-import { createBookingSchema, rescheduleBookingSchema, } from "./dto/bookings.schemas.js";
+import { createBookingSchema, rescheduleBookingSchema, rescheduleBookingSlotsQuerySchema, } from "./dto/bookings.schemas.js";
 import { BookingsService } from "./bookings.service.js";
 let BookingsController = class BookingsController {
     bookingsService;
@@ -25,6 +25,9 @@ let BookingsController = class BookingsController {
     }
     listMine(user) {
         return this.bookingsService.listMine(user);
+    }
+    availableForReschedule(user, id, query) {
+        return this.bookingsService.availableForReschedule(user, id, rescheduleBookingSlotsQuerySchema.parse(query));
     }
     getOne(user, id) {
         return this.bookingsService.getOne(user, id);
@@ -60,6 +63,15 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], BookingsController.prototype, "listMine", null);
+__decorate([
+    Get(":id/slots"),
+    __param(0, CurrentUser()),
+    __param(1, Param("id")),
+    __param(2, Query()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", void 0)
+], BookingsController.prototype, "availableForReschedule", null);
 __decorate([
     Get(":id"),
     __param(0, CurrentUser()),

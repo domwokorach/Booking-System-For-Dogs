@@ -33,6 +33,12 @@ delegate application and authorization logic to injectable services. Services
 use the injected `PrismaService` for CRUD operations and transactions; they do
 not create their own database connections.
 
+Appointment times are generated from the configured business timezone. Each
+appointment stores a duration snapshot so later catalog edits do not change an
+existing booking. Short, date-ordered advisory locks serialize competing slot
+claims, while PostgreSQL's active-time exclusion constraint remains the final
+guard against overlapping writes.
+
 The main application modules live under `src/`:
 
 - `auth/` handles registration, login, refresh tokens, logout, and password reset.
@@ -56,11 +62,13 @@ GET  /api/bookings/me
 PATCH /api/bookings/:id/confirm
 PATCH /api/bookings/:id/cancel
 PATCH /api/bookings/:id/reschedule
+GET  /api/bookings/:id/slots
 GET  /api/appointments/mine
 POST /api/appointments
 PATCH /api/appointments/:id/confirm
 PATCH /api/appointments/:id/cancel
 PATCH /api/appointments/:id/reschedule
+GET  /api/appointments/:id/slots
 POST /api/users/me/delete-request
 ```
 

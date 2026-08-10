@@ -9,6 +9,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 
@@ -18,6 +19,7 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard.js";
 import {
   createBookingSchema,
   rescheduleBookingSchema,
+  rescheduleBookingSlotsQuerySchema,
 } from "./dto/bookings.schemas.js";
 import { BookingsService } from "./bookings.service.js";
 
@@ -40,6 +42,19 @@ export class BookingsController {
   @Get("me")
   listMine(@CurrentUser() user: AuthUser) {
     return this.bookingsService.listMine(user);
+  }
+
+  @Get(":id/slots")
+  availableForReschedule(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Query() query: Record<string, unknown>,
+  ) {
+    return this.bookingsService.availableForReschedule(
+      user,
+      id,
+      rescheduleBookingSlotsQuerySchema.parse(query),
+    );
   }
 
   @Get(":id")

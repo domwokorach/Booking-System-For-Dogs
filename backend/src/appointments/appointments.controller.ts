@@ -45,6 +45,16 @@ export class AppointmentsController {
     return this.appointmentsService.listMine(user);
   }
 
+  @Get(":id/slots")
+  availableForReschedule(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Query() query: Record<string, unknown>,
+  ) {
+    const { date } = availableAppointmentsQuerySchema.parse(query);
+    return this.appointmentsService.availableForReschedule(user, id, date);
+  }
+
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     return this.appointmentsService.create(

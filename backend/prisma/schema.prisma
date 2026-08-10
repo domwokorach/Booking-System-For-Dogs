@@ -54,6 +54,7 @@ model Appointment {
   serviceId        String?
   serviceRef       Service?          @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   dateTime         DateTime
+  durationMinutes  Int               @default(60)
   status           AppointmentStatus @default(Pending)
   service          String?
   notes            String?

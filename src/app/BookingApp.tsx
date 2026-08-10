@@ -887,23 +887,26 @@ export default function BookingApp() {
   }
 
   useEffect(() => {
-    if (!rescheduleDate || !rescheduleServiceId) {
+    if (!rescheduleDate || !rescheduleServiceId || !rescheduleAppointmentId || !token) {
       setRescheduleSlots([]);
       return;
     }
 
     const dateKey = format(rescheduleDate, "yyyy-MM-dd");
-    void fetchRescheduleSlots(dateKey, rescheduleServiceId);
-  }, [rescheduleDate, rescheduleServiceId]);
+    void fetchRescheduleSlots(dateKey, rescheduleAppointmentId);
+  }, [rescheduleDate, rescheduleServiceId, rescheduleAppointmentId, token]);
 
-  async function fetchRescheduleSlots(dateKey: string, serviceId: string) {
+  async function fetchRescheduleSlots(dateKey: string, appointmentId: string) {
     try {
-      const response = await fetch(`${API_BASE}/api/slots?serviceId=${encodeURIComponent(serviceId)}&date=${dateKey}`);
+      const response = await fetch(
+        `${API_BASE}/api/appointments/${encodeURIComponent(appointmentId)}/slots?date=${dateKey}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
       if (!response.ok) {
         throw new Error("Unable to load reschedule slots.");
       }
-      const data = (await response.json()) as { slots: Array<{ startAt: string }> };
-      setRescheduleSlots(data.slots.map((slot) => slot.startAt));
+      const data = (await response.json()) as { availableTimes: string[] };
+      setRescheduleSlots(data.availableTimes);
     } catch {
       setRescheduleSlots([]);
     }
