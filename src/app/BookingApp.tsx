@@ -76,6 +76,21 @@ interface AppointmentMutationResponse {
 const API_BASE = import.meta.env.VITE_API_URL?.trim() || "";
 const SESSION_STORAGE_KEY = "pawside-session";
 
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
 const SERVICES = [
   {
     id: "grooming" as ServiceId,
@@ -399,6 +414,20 @@ export default function BookingApp() {
     }
     setSelectedDate(date);
     setBooking((current) => ({ ...current, time: null }));
+  }
+
+  function showMonth(month: Date) {
+    setCurrentMonth(startOfMonth(month));
+    setSelectedDate(null);
+    setAvailableSlots([]);
+    setBooking((current) => ({ ...current, time: null }));
+  }
+
+  function handleMonthSelect(monthIndex: number) {
+    const month = new Date(currentMonth);
+    month.setDate(1);
+    month.setMonth(monthIndex);
+    showMonth(month);
   }
 
   function handleServiceSelect(id: ServiceId) {
@@ -799,7 +828,7 @@ export default function BookingApp() {
                 <div className="rounded-3xl border border-border bg-card p-8 shadow-sm">
                   <div className="mb-6">
                     <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">Book a new slot</p>
-                    <h3 className="text-2xl font-bold font-serif text-foreground">Reserve a time</h3>
+                    <h3 className="text-2xl font-bold font-serif text-foreground">Reserve a time and month</h3>
                   </div>
                   {bookingStep === "confirmed" ? (
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-sm text-emerald-700">
@@ -812,11 +841,20 @@ export default function BookingApp() {
                     </div>
                   ) : (
                     <>
-                      <div className="mb-4 flex items-center justify-between">
-                        <span className="text-sm font-semibold text-foreground">Select a date</span>
-                        <div className="flex gap-2">
-                          <button onClick={() => setCurrentMonth((month) => subMonths(month, 1))} className="rounded-lg border border-border p-2"><ChevronLeft size={16} /></button>
-                          <button onClick={() => setCurrentMonth((month) => addMonths(month, 1))} className="rounded-lg border border-border p-2"><ChevronRight size={16} /></button>
+                      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                        <span className="text-sm font-semibold text-foreground">Select a month and date</span>
+                        <div className="flex items-center gap-2">
+                          <button type="button" aria-label="Previous month" onClick={() => showMonth(subMonths(currentMonth, 1))} className="rounded-lg border border-border p-2"><ChevronLeft size={16} /></button>
+                          <select
+                            aria-label="Select month"
+                            value={currentMonth.getMonth()}
+                            onChange={(event) => handleMonthSelect(Number(event.target.value))}
+                            className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground"
+                          >
+                            {MONTHS.map((month, index) => <option key={month} value={index}>{month}</option>)}
+                          </select>
+                          <span className="min-w-10 text-center text-sm font-semibold text-foreground">{format(currentMonth, "yyyy")}</span>
+                          <button type="button" aria-label="Next month" onClick={() => showMonth(addMonths(currentMonth, 1))} className="rounded-lg border border-border p-2"><ChevronRight size={16} /></button>
                         </div>
                       </div>
                       <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-muted-foreground">
@@ -959,11 +997,20 @@ export default function BookingApp() {
                         <button onClick={() => setCurrentView("dashboard")} className="mt-6 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground">Open dashboard</button>
                       </div>
                       <div className="rounded-2xl border border-border bg-background p-6">
-                        <div className="mb-4 flex items-center justify-between">
-                          <span className="text-sm font-semibold text-foreground">Select a date</span>
-                          <div className="flex gap-2">
-                            <button onClick={() => setCurrentMonth((month) => subMonths(month, 1))} className="rounded-lg border border-border p-2"><ChevronLeft size={16} /></button>
-                            <button onClick={() => setCurrentMonth((month) => addMonths(month, 1))} className="rounded-lg border border-border p-2"><ChevronRight size={16} /></button>
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                          <span className="text-sm font-semibold text-foreground">Select a month and date</span>
+                          <div className="flex items-center gap-2">
+                            <button type="button" aria-label="Previous month" onClick={() => showMonth(subMonths(currentMonth, 1))} className="rounded-lg border border-border p-2"><ChevronLeft size={16} /></button>
+                            <select
+                              aria-label="Select month"
+                              value={currentMonth.getMonth()}
+                              onChange={(event) => handleMonthSelect(Number(event.target.value))}
+                              className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground"
+                            >
+                              {MONTHS.map((month, index) => <option key={month} value={index}>{month}</option>)}
+                            </select>
+                            <span className="min-w-10 text-center text-sm font-semibold text-foreground">{format(currentMonth, "yyyy")}</span>
+                            <button type="button" aria-label="Next month" onClick={() => showMonth(addMonths(currentMonth, 1))} className="rounded-lg border border-border p-2"><ChevronRight size={16} /></button>
                           </div>
                         </div>
                         <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-muted-foreground">
