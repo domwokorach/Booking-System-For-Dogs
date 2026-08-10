@@ -3,6 +3,8 @@ import { Server } from "socket.io";
 import app from "./app.js";
 import { env } from "./config/env.js";
 import { prisma } from "./config/prisma.js";
+import { verifyAccessToken } from "./middlewares/auth.js";
+import { appointmentRoom } from "./utils/realtime.js";
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
@@ -10,7 +12,21 @@ const io = new Server(httpServer, {
         methods: ["GET", "POST", "PATCH"],
     },
 });
+io.use((socket, next) => {
+    const token = socket.handshake.auth?.token;
+    if (typeof token !== "string") {
+        return next(new Error("Authentication required."));
+    }
+    try {
+        socket.data.user = verifyAccessToken(token);
+        return next();
+    }
+    catch {
+        return next(new Error("Invalid or expired token."));
+    }
+});
 io.on("connection", (socket) => {
+    socket.join(appointmentRoom(socket.data.user.userId));
     socket.emit("server:connected", { message: "Realtime channel connected." });
 });
 app.set("io", io);

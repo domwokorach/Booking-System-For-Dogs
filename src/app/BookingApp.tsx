@@ -75,6 +75,7 @@ interface AppointmentMutationResponse {
 
 const API_BASE = import.meta.env.VITE_API_URL?.trim() || "";
 const SESSION_STORAGE_KEY = "pawside-session";
+const APPOINTMENT_REFRESH_INTERVAL_MS = 5_000;
 
 const MONTHS = [
   "January",
@@ -222,6 +223,11 @@ export default function BookingApp() {
   const [rescheduleDate, setRescheduleDate] = useState<Date | null>(null);
   const [rescheduleSlots, setRescheduleSlots] = useState<string[]>([]);
   const [rescheduleTime, setRescheduleTime] = useState<string | null>(null);
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  const [deleteAccountForm, setDeleteAccountForm] = useState({
+    currentPassword: "",
+    confirmation: "",
+  });
 
   const canProceed = Boolean(selectedDate && booking.service && booking.time);
   const bookingRequirementsMessage = !selectedDate
@@ -258,7 +264,24 @@ export default function BookingApp() {
     if (!token) {
       return;
     }
+
     void loadAppointments();
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        void loadAppointments();
+      }
+    };
+    const refreshInterval = window.setInterval(
+      refreshWhenVisible,
+      APPOINTMENT_REFRESH_INTERVAL_MS,
+    );
+    window.addEventListener("focus", refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(refreshInterval);
+      window.removeEventListener("focus", refreshWhenVisible);
+    };
   }, [token]);
 
   useEffect(() => {
@@ -345,6 +368,42 @@ export default function BookingApp() {
     setAppointments([]);
     setCurrentView("home");
     setFeedback("You have been logged out.");
+  }
+
+  async function handleDeleteAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || deleteAccountForm.confirmation !== "DELETE") {
+      setFeedback('Enter your password and type "DELETE" to confirm.');
+      return;
+    }
+
+    setLoading(true);
+    setFeedback(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/users/me`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(deleteAccountForm),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || "Unable to delete your account.");
+      }
+
+      setDeleteAccountOpen(false);
+      setDeleteAccountForm({ currentPassword: "", confirmation: "" });
+      clearSession();
+      setFeedback("Your account and appointments have been permanently deleted.");
+    } catch (error) {
+      setFeedback((error as Error).message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
@@ -904,6 +963,73 @@ export default function BookingApp() {
                   )}
                 </div>
               </div>
+
+              <section aria-labelledby="delete-account-heading" className="rounded-3xl border border-red-200 bg-red-50/50 p-8 shadow-sm">
+                <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.2em] text-red-700">My Account</p>
+                    <h3 id="delete-account-heading" className="mt-1 text-2xl font-bold font-serif text-foreground">Delete your account</h3>
+                    <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                      Permanently delete your profile, appointments, and account access. This action cannot be undone.
+                    </p>
+                  </div>
+                  {!deleteAccountOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => { setDeleteAccountOpen(true); setFeedback(null); }}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-300 bg-white px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-100"
+                    >
+                      <Trash2 size={16} />
+                      Delete your account
+                    </button>
+                  ) : null}
+                </div>
+
+                {deleteAccountOpen ? (
+                  <form onSubmit={handleDeleteAccount} className="mt-6 max-w-xl space-y-4 rounded-2xl border border-red-200 bg-white p-5">
+                    <p className="text-sm font-semibold text-red-800">Confirm permanent account deletion</p>
+                    <div>
+                      <label htmlFor="delete-account-password" className="mb-1.5 block text-sm font-medium text-foreground">Current password</label>
+                      <input
+                        id="delete-account-password"
+                        type="password"
+                        autoComplete="current-password"
+                        value={deleteAccountForm.currentPassword}
+                        onChange={(event) => setDeleteAccountForm((current) => ({ ...current, currentPassword: event.target.value }))}
+                        className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="delete-account-confirmation" className="mb-1.5 block text-sm font-medium text-foreground">Type DELETE to confirm</label>
+                      <input
+                        id="delete-account-confirmation"
+                        value={deleteAccountForm.confirmation}
+                        onChange={(event) => setDeleteAccountForm((current) => ({ ...current, confirmation: event.target.value }))}
+                        className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm"
+                        placeholder="DELETE"
+                        required
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="submit"
+                        disabled={loading || deleteAccountForm.confirmation !== "DELETE"}
+                        className="rounded-xl bg-red-700 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {loading ? "Deleting account..." : "Permanently delete account"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setDeleteAccountOpen(false); setDeleteAccountForm({ currentPassword: "", confirmation: "" }); }}
+                        className="rounded-xl border border-border bg-background px-4 py-3 text-sm font-semibold text-foreground"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
+              </section>
             </div>
           </section>
         ) : (

@@ -6,6 +6,7 @@ import { requireAuth } from "../middlewares/auth.js";
 import { resolveBookingRecipient, sendBookingCancellationEmail, sendBookingConfirmationEmail, sendDeletionRequestEmail, sendBookingUpdateEmail, } from "../services/email.service.js";
 import { getAvailableAppointmentTimes, isSlotAvailable, } from "../utils/appointment-slots.js";
 import { HttpError } from "../utils/http-error.js";
+import { emitAppointmentEvent } from "../utils/realtime.js";
 const router = Router();
 const createAppointmentSchema = z.object({
     dateTime: z.coerce.date(),
@@ -98,7 +99,7 @@ router.post("/", async (req, res, next) => {
             appointmentDateTime: appointment.dateTime,
             status: appointment.status,
         });
-        req.app.get("io").emit("appointments:created", {
+        emitAppointmentEvent(req, req.user.userId, "appointments:created", {
             appointmentId: appointment.id,
             dateTime: appointment.dateTime,
             status: appointment.status,
@@ -147,7 +148,7 @@ router.patch("/:id", async (req, res, next) => {
             appointmentDateTime: updated.dateTime,
             status: updated.status,
         });
-        req.app.get("io").emit("appointments:updated", {
+        emitAppointmentEvent(req, req.user.userId, "appointments:updated", {
             appointmentId: updated.id,
             dateTime: updated.dateTime,
             status: updated.status,
@@ -199,7 +200,7 @@ router.patch("/:id/reschedule", async (req, res, next) => {
             appointmentDateTime: updated.dateTime,
             status: updated.status,
         });
-        req.app.get("io").emit("appointments:rescheduled", {
+        emitAppointmentEvent(req, req.user.userId, "appointments:rescheduled", {
             appointmentId: updated.id,
             dateTime: updated.dateTime,
             status: updated.status,
@@ -249,7 +250,7 @@ router.patch("/:id/confirm", async (req, res, next) => {
             appointmentDateTime: updated.dateTime,
             status: updated.status,
         });
-        req.app.get("io").emit("appointments:confirmed", {
+        emitAppointmentEvent(req, req.user.userId, "appointments:confirmed", {
             appointmentId: updated.id,
             dateTime: updated.dateTime,
             status: updated.status,
@@ -293,7 +294,7 @@ router.patch("/:id/cancel", async (req, res, next) => {
             appointmentDateTime: updated.dateTime,
             status: updated.status,
         });
-        req.app.get("io").emit("appointments:cancelled", {
+        emitAppointmentEvent(req, req.user.userId, "appointments:cancelled", {
             appointmentId: updated.id,
             dateTime: updated.dateTime,
             status: updated.status,
@@ -336,7 +337,7 @@ router.delete("/:id", async (req, res, next) => {
         await prisma.appointment.delete({
             where: { id: appointment.id },
         });
-        req.app.get("io").emit("appointments:deleted", {
+        emitAppointmentEvent(req, req.user.userId, "appointments:deleted", {
             appointmentId: appointment.id,
         });
         return res.json({ message: "Appointment deleted successfully" });
@@ -379,7 +380,7 @@ router.post("/:id/delete-request", async (req, res, next) => {
             appointmentDateTime: updated.dateTime,
             status: updated.status,
         });
-        req.app.get("io").emit("appointments:updated", {
+        emitAppointmentEvent(req, req.user.userId, "appointments:updated", {
             appointmentId: updated.id,
             dateTime: updated.dateTime,
             status: updated.status,

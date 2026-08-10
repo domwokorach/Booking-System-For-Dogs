@@ -21,6 +21,11 @@ const changePasswordSchema = z.object({
   newPassword: z.string().min(8),
 });
 
+const deleteAccountSchema = z.object({
+  currentPassword: z.string().min(1),
+  confirmation: z.literal("DELETE"),
+});
+
 async function verifyPassword(password: string, passwordHash: string) {
   if (passwordHash.startsWith("$2a$") || passwordHash.startsWith("$2b$") || passwordHash.startsWith("$2y$")) {
     return bcrypt.compare(password, passwordHash);
@@ -125,8 +130,26 @@ router.patch("/me/password", async (req, res, next) => {
 
 router.delete("/me", async (req, res, next) => {
   try {
-    await prisma.user.delete({
+    const body = deleteAccountSchema.parse(req.body);
+    const user = await prisma.user.findUnique({
       where: { id: req.user!.userId },
+      select: {
+        id: true,
+        passwordHash: true,
+      },
+    });
+
+    if (!user) {
+      throw new HttpError(404, "User not found.");
+    }
+
+    const validPassword = await verifyPassword(body.currentPassword, user.passwordHash);
+    if (!validPassword) {
+      throw new HttpError(401, "Current password is incorrect.");
+    }
+
+    await prisma.user.delete({
+      where: { id: user.id },
     });
 
     return res.status(204).send();
