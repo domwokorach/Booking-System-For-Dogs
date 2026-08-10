@@ -8,10 +8,16 @@ datasource db {
 }
 
 enum AppointmentStatus {
-  Pending
-  Confirmed
-  Rescheduled
-  Cancelled
+  Pending     @map("PENDING")
+  Confirmed   @map("CONFIRMED")
+  Rescheduled @map("RESCHEDULED")
+  Cancelled   @map("CANCELLED")
+}
+
+enum AccountDeletionRequestStatus {
+  PENDING
+  CANCELLED
+  COMPLETED
 }
 
 model User {
@@ -25,7 +31,7 @@ model User {
   appointments Appointment[]
   refreshTokens RefreshToken[]
   passwordResetTokens PasswordResetToken[]
-  accountDeletionTokens AccountDeletionToken[]
+  accountDeletionRequest AccountDeletionRequest?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
@@ -89,14 +95,16 @@ model RefreshToken {
   @@index([expiresAt])
 }
 
-model AccountDeletionToken {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+model AccountDeletionRequest {
+  id          String                       @id @default(uuid())
+  userId      String                       @unique
+  user        User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash   String                       @unique
+  status      AccountDeletionRequestStatus @default(PENDING)
+  expiresAt   DateTime
+  cancelledAt DateTime?
+  createdAt   DateTime                     @default(now())
+  updatedAt   DateTime                     @updatedAt
 
-  @@index([userId])
   @@index([expiresAt])
 }

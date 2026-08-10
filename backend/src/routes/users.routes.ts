@@ -7,7 +7,7 @@ import { z } from "zod";
 import { prisma } from "../config/prisma.js";
 import { env } from "../config/env.js";
 import { requireAuth } from "../middlewares/auth.js";
-import { sendAccountDeletionEmail } from "../services/email.service.js";
+import { sendAccountDeletionRequestEmails } from "../services/email.service.js";
 import { HttpError } from "../utils/http-error.js";
 
 const router = Router();
@@ -49,7 +49,7 @@ router.post("/delete-account/confirm", async (req, res, next) => {
   try {
     const body = confirmDeleteAccountSchema.parse(req.body);
     const tokenHash = hashAccountDeletionToken(body.token);
-    const storedToken = await prisma.accountDeletionToken.findUnique({
+    const storedRequest = await prisma.accountDeletionRequest.findUnique({
       where: { tokenHash },
       include: {
         user: {
@@ -58,17 +58,85 @@ router.post("/delete-account/confirm", async (req, res, next) => {
       },
     });
 
-    if (!storedToken || storedToken.expiresAt < new Date()) {
+    if (!storedRequest || storedRequest.expiresAt < new Date()) {
       throw new HttpError(400, "This account deletion link is invalid or has expired.");
     }
 
-    await prisma.user.delete({
-      where: { id: storedToken.user.id },
+    if (storedRequest.status === "CANCELLED") {
+      throw new HttpError(409, "This account deletion request has been cancelled.");
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const claimed = await tx.accountDeletionRequest.updateMany({
+        where: {
+          id: storedRequest.id,
+          status: "PENDING",
+        },
+        data: { status: "COMPLETED" },
+      });
+
+      if (claimed.count !== 1) {
+        throw new HttpError(409, "This account deletion request is no longer pending.");
+      }
+
+      await tx.user.delete({
+        where: { id: storedRequest.user.id },
+      });
     });
 
     return res.json({
       success: true,
       message: "Your account and appointments have been permanently deleted.",
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/delete-account/cancel", async (req, res, next) => {
+  try {
+    const body = confirmDeleteAccountSchema.parse(req.body);
+    const tokenHash = hashAccountDeletionToken(body.token);
+    const storedRequest = await prisma.accountDeletionRequest.findUnique({
+      where: { tokenHash },
+      select: {
+        id: true,
+        status: true,
+        expiresAt: true,
+      },
+    });
+
+    if (!storedRequest || storedRequest.expiresAt < new Date()) {
+      throw new HttpError(400, "This account deletion link is invalid or has expired.");
+    }
+
+    if (storedRequest.status === "CANCELLED") {
+      return res.json({
+        success: true,
+        status: "CANCELLED",
+        message: "The account deletion request is already cancelled. Your account remains active.",
+      });
+    }
+
+    const cancelled = await prisma.accountDeletionRequest.updateMany({
+      where: {
+        id: storedRequest.id,
+        status: "PENDING",
+      },
+      data: {
+        status: "CANCELLED",
+        cancelledAt: new Date(),
+      },
+    });
+
+    if (cancelled.count !== 1) {
+      throw new HttpError(409, "This account deletion request is no longer pending.");
+    }
+
+    return res.json({
+      success: true,
+      status: "CANCELLED",
+      message: "The account deletion request was cancelled. Your account remains active.",
     });
   } catch (error) {
     return next(error);
@@ -177,6 +245,8 @@ router.post("/me/delete-request", async (req, res, next) => {
       select: {
         id: true,
         passwordHash: true,
+        firstName: true,
+        email: true,
       },
     });
 
@@ -189,44 +259,41 @@ router.post("/me/delete-request", async (req, res, next) => {
       throw new HttpError(401, "Current password is incorrect.");
     }
 
-    const account = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: {
-        firstName: true,
-        email: true,
-      },
-    });
-
-    if (!account) {
-      throw new HttpError(404, "User not found.");
-    }
-
     const rawToken = randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
-    await prisma.$transaction([
-      prisma.accountDeletionToken.deleteMany({
-        where: { userId: user.id },
-      }),
-      prisma.accountDeletionToken.create({
-        data: {
-          userId: user.id,
-          tokenHash: hashAccountDeletionToken(rawToken),
-          expiresAt,
-        },
-      }),
-    ]);
+    const deletionRequest = await prisma.accountDeletionRequest.upsert({
+      where: { userId: user.id },
+      update: {
+        tokenHash: hashAccountDeletionToken(rawToken),
+        status: "PENDING",
+        expiresAt,
+        cancelledAt: null,
+      },
+      create: {
+        userId: user.id,
+        tokenHash: hashAccountDeletionToken(rawToken),
+        status: "PENDING",
+        expiresAt,
+      },
+      select: { id: true },
+    });
 
     const confirmationUrl = `${env.FRONTEND_URL.replace(/\/$/, "")}/?deleteAccountToken=${rawToken}`;
-    await sendAccountDeletionEmail({
-      to: account.email,
-      firstName: account.firstName,
+    const cancellationUrl = `${env.FRONTEND_URL.replace(/\/$/, "")}/?cancelDeleteAccountToken=${rawToken}`;
+    await sendAccountDeletionRequestEmails({
+      to: user.email,
+      firstName: user.firstName,
+      requestId: deletionRequest.id,
       confirmationUrl,
+      cancellationUrl,
+      adminRecipient: env.BOOKING_EMAIL_TO.trim() || "dominicolanya@gmail.com",
     });
 
     return res.status(202).json({
       success: true,
-      message: "Check your email to confirm deletion of your account. The link expires in 30 minutes.",
+      status: "PENDING",
+      message: "Your deletion request is pending. Check your email to confirm or cancel it within 30 minutes.",
     });
   } catch (error) {
     return next(error);

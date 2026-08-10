@@ -40,7 +40,7 @@ import { formatSlotLabel, resolveAppointmentDateTime } from "./lib/booking-time"
 
 type ServiceId = "grooming" | "training" | "daycare" | "boarding";
 type AuthMode = "login" | "register";
-type CurrentView = "home" | "login" | "register" | "dashboard" | "delete-account-confirm";
+type CurrentView = "home" | "login" | "register" | "dashboard" | "delete-account-confirm" | "delete-account-cancel";
 
 interface BookingState {
   service: ServiceId | null;
@@ -74,6 +74,10 @@ interface AppointmentMutationResponse {
 }
 
 const API_BASE = import.meta.env.VITE_API_URL?.trim() || "";
+const SOCKET_BASE =
+  import.meta.env.VITE_SOCKET_URL?.trim() ||
+  API_BASE ||
+  (import.meta.env.DEV ? "http://localhost:4000" : "");
 const SESSION_STORAGE_KEY = "pawside-session";
 const LAST_ACTIVITY_STORAGE_KEY = "pawside-last-activity";
 const SESSION_INACTIVITY_TIMEOUT_MS = 2 * 60 * 1_000;
@@ -244,11 +248,23 @@ export default function BookingApp() {
   const calDays = useMemo(() => buildCalendarDays(currentMonth), [currentMonth]);
 
   useEffect(() => {
-    const deletionToken = new URLSearchParams(window.location.search).get("deleteAccountToken");
+    const searchParams = new URLSearchParams(window.location.search);
+    const deletionToken = searchParams.get("deleteAccountToken");
+    const cancellationToken = searchParams.get("cancelDeleteAccountToken");
+    const deletionActionView: CurrentView | null = cancellationToken
+      ? "delete-account-cancel"
+      : deletionToken
+        ? "delete-account-confirm"
+        : null;
+
+    if (cancellationToken) {
+      setAccountDeletionToken(cancellationToken);
+    }
     if (deletionToken) {
       setAccountDeletionToken(deletionToken);
-      setCurrentView("delete-account-confirm");
-      return;
+    }
+    if (deletionActionView) {
+      setCurrentView(deletionActionView);
     }
 
     const saved = window.localStorage.getItem(SESSION_STORAGE_KEY);
@@ -260,7 +276,9 @@ export default function BookingApp() {
       const parsed = JSON.parse(saved) as { user: UserProfile; token: string };
       setUser(parsed.user);
       setToken(parsed.token);
-      setCurrentView("dashboard");
+      if (!deletionActionView) {
+        setCurrentView("dashboard");
+      }
     } catch {
       window.localStorage.removeItem(SESSION_STORAGE_KEY);
     }
@@ -388,8 +406,7 @@ export default function BookingApp() {
       return;
     }
 
-    const client = io(API_BASE, {
-      transports: ["websocket"],
+    const client = io(SOCKET_BASE, {
       auth: { token },
     });
 
@@ -535,6 +552,37 @@ export default function BookingApp() {
       setAccountDeletionToken(null);
       setCurrentView("home");
       setFeedback(data?.message || "Your account has been permanently deleted.");
+    } catch (error) {
+      setFeedback((error as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCancelAccountDeletion() {
+    if (!accountDeletionToken) {
+      setFeedback("This account deletion link is invalid.");
+      return;
+    }
+
+    setLoading(true);
+    setFeedback(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/users/delete-account/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: accountDeletionToken }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.message || "Unable to cancel the account deletion request.");
+      }
+
+      window.history.replaceState({}, "", window.location.pathname);
+      setAccountDeletionToken(null);
+      setCurrentView(user ? "dashboard" : "home");
+      setFeedback(data?.message || "The deletion request was cancelled. Your account remains active.");
     } catch (error) {
       setFeedback((error as Error).message);
     } finally {
@@ -887,7 +935,34 @@ export default function BookingApp() {
       </nav>
 
       <div className="pt-16">
-        {currentView === "delete-account-confirm" ? (
+        {currentView === "delete-account-cancel" ? (
+          <section className="min-h-[calc(100vh-4rem)] px-6 py-16 flex items-center justify-center">
+            <div className="w-full max-w-xl rounded-3xl border border-emerald-200 bg-card p-8 text-center shadow-sm">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                <Check size={22} />
+              </div>
+              <p className="mt-6 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-700">My Account</p>
+              <h2 className="mt-2 text-3xl font-bold font-serif text-foreground">Cancel delete request</h2>
+              <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                Cancel the pending deletion request and keep your Pawside account and appointments active.
+              </p>
+              {feedback ? <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{feedback}</div> : null}
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                <button
+                  type="button"
+                  onClick={handleCancelAccountDeletion}
+                  disabled={loading || !accountDeletionToken}
+                  className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {loading ? "Cancelling request..." : "Cancel Delete Request"}
+                </button>
+                <button type="button" onClick={cancelAccountDeletionConfirmation} className="rounded-xl border border-border px-5 py-3 text-sm font-semibold text-foreground">
+                  Leave request pending
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : currentView === "delete-account-confirm" ? (
           <section className="min-h-[calc(100vh-4rem)] px-6 py-16 flex items-center justify-center">
             <div className="w-full max-w-xl rounded-3xl border border-red-200 bg-card p-8 text-center shadow-sm">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-700">
@@ -909,7 +984,7 @@ export default function BookingApp() {
                   {loading ? "Deleting account..." : "Confirm permanent deletion"}
                 </button>
                 <button type="button" onClick={cancelAccountDeletionConfirmation} className="rounded-xl border border-border px-5 py-3 text-sm font-semibold text-foreground">
-                  Keep my account
+                  Not now
                 </button>
               </div>
             </div>
