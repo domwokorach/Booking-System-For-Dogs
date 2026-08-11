@@ -26,6 +26,7 @@ npm --prefix backend run prisma:migrate:deploy
 ```
 
 Run this from CI/CD with the production `DATABASE_URL`. The backend's
+`prisma.config.ts` reads that URL for Prisma CLI commands, and the backend's
 `postinstall` script generates Prisma Client during every deployment.
 
 ## 2. Deploy the backend
@@ -41,8 +42,9 @@ Preview values if preview deployments should connect to external services):
 NODE_ENV=production
 DATABASE_URL=postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require
 
-CLIENT_ORIGIN=https://YOUR-FRONTEND.vercel.app
 FRONTEND_URL=https://YOUR-FRONTEND.vercel.app
+# Optional explicit CORS origin; defaults to FRONTEND_URL.
+CLIENT_ORIGIN=https://YOUR-FRONTEND.vercel.app
 BUSINESS_TIME_ZONE=Europe/London
 
 JWT_ACCESS_SECRET=GENERATE_A_LONG_RANDOM_SECRET
@@ -82,8 +84,9 @@ VITE_BUSINESS_TIME_ZONE=Europe/London
 ```
 
 The frontend already reads `VITE_API_URL`; no production API URL is hard-coded.
-After the final frontend URL is known, set that exact origin in both
-`CLIENT_ORIGIN` and `FRONTEND_URL` on the backend, then redeploy the backend.
+After the final frontend URL is known, set it as `FRONTEND_URL` on the backend,
+then redeploy. `CLIENT_ORIGIN` can be omitted because it defaults to
+`FRONTEND_URL`, or set explicitly to the same origin.
 
 ## 4. Configure Stripe
 

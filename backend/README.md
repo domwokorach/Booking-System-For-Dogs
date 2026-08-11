@@ -306,6 +306,9 @@ pnpm --dir backend exec prisma migrate deploy --schema=prisma/schema.prisma
 pnpm --dir backend run start
 ```
 
+The Prisma CLI reads `DATABASE_URL`, the schema path, and the migrations path
+from `backend/prisma.config.ts`.
+
 Docker and Render use the same sequence. The server listens on `0.0.0.0` and
 the configured `PORT`, which remains 3000 locally but can be supplied by the
 hosting platform.
