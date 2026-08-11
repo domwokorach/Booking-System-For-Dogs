@@ -72,6 +72,15 @@ function formatPayment(data) {
     }).format(data.amountPence / 100);
     return `\nPayment: ${amount}\nPayment status: ${data.paymentStatus ?? "PAID"}`;
 }
+function formatAmount(data) {
+    if (data.amountPence === undefined || !data.currency) {
+        return "the payment amount";
+    }
+    return new Intl.NumberFormat("en-GB", {
+        style: "currency",
+        currency: data.currency.toUpperCase(),
+    }).format(data.amountPence / 100);
+}
 function escapeHtml(value) {
     return value
         .replaceAll("&", "&amp;")
@@ -113,6 +122,36 @@ export async function sendBookingCancellationEmail(data) {
         text: `Hi ${data.firstName},\n\nYour booking has been cancelled.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nSelected service: ${formatService(data.service)}\nAppointment date: ${formatDate(data.appointmentDateTime)}\nAppointment time: ${formatTime(data.appointmentDateTime)}\nBooking status: ${data.status}.`,
     })));
     return results.every(Boolean);
+}
+export async function sendRefundRequestedEmail(data) {
+    const amount = formatAmount(data);
+    const results = await Promise.all(resolveBookingRecipients(data.to).map((recipient) => sendMailSafely({
+        from: env.EMAIL_FROM,
+        to: recipient,
+        subject: "Booking cancelled – refund requested",
+        text: `Hi ${data.firstName},\n\nYour booking has been cancelled and your refund has been requested successfully.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nSelected service: ${formatService(data.service)}\nRefund amount: ${amount}\nRefund status: Processing${data.refundId ? `\nStripe refund ID: ${data.refundId}` : ""}\n\nMost card refunds appear in your account within approximately 5–10 business days, depending on your bank. If the refund was requested soon after payment, the original charge might disappear instead of appearing as a separate credit.`,
+    })));
+    return results[0] ?? false;
+}
+export async function sendRefundConfirmationEmail(data) {
+    const amount = formatAmount(data);
+    const results = await Promise.all(resolveBookingRecipients(data.to).map((recipient) => sendMailSafely({
+        from: env.EMAIL_FROM,
+        to: recipient,
+        subject: "Refund completed",
+        text: `Hi ${data.firstName},\n\nYour refund of ${amount} has been processed.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nSelected service: ${formatService(data.service)}\nRefund status: Completed${data.refundId ? `\nStripe refund ID: ${data.refundId}` : ""}\n\nPlease allow approximately 5–10 business days for the money to appear in your account, depending on your bank. A refund requested soon after payment can appear as a reversal, where the original charge disappears instead of a separate credit appearing.`,
+    })));
+    return results[0] ?? false;
+}
+export async function sendRefundFailureEmail(data) {
+    const amount = formatAmount(data);
+    const results = await Promise.all(resolveBookingRecipients(data.to).map((recipient) => sendMailSafely({
+        from: env.EMAIL_FROM,
+        to: recipient,
+        subject: "Refund requires attention",
+        text: `Hi ${data.firstName},\n\nStripe could not complete your refund of ${amount}.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nSelected service: ${formatService(data.service)}\nRefund status: Failed${data.refundId ? `\nStripe refund ID: ${data.refundId}` : ""}${data.refundFailureReason ? `\nReason: ${data.refundFailureReason}` : ""}\n\nPlease contact us so we can arrange an alternative refund.`,
+    })));
+    return results[0] ?? false;
 }
 export async function sendDeletionRequestEmail(data) {
     const safeApprovalUrl = escapeHtml(data.approvalUrl);

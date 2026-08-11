@@ -6,7 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { AppointmentStatus, Prisma } from "@prisma/client";
+import { AppointmentStatus, PaymentStatus, Prisma } from "@prisma/client";
 
 import type { AuthUser } from "../auth/auth.types.js";
 import { env } from "../config/env.js";
@@ -56,19 +56,44 @@ export class AppointmentsService {
   async listMine(user: AuthUser) {
     const appointments = await this.prisma.appointment.findMany({
       where: { userId: user.id },
-      include: { review: { select: { id: true } } },
+      include: {
+        review: { select: { id: true } },
+        payments: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            status: true,
+            amountPence: true,
+            currency: true,
+            stripeRefundId: true,
+            refundRequestedAt: true,
+            refundedAt: true,
+            refundFailedAt: true,
+          },
+        },
+      },
       orderBy: { dateTime: "asc" },
     });
 
-    return appointments.map((appointment) => ({
-      ...appointment,
-      reviewEligibility: getReviewEligibility({
-        status: appointment.status,
-        dateTime: appointment.dateTime,
-        durationMinutes: appointment.durationMinutes,
-        hasReview: Boolean(appointment.review),
-      }),
-    }));
+    return appointments.map(({ payments, ...appointment }) => {
+      const payment = payments[0];
+      return {
+        ...appointment,
+        paymentStatus: payment ? paymentStatusResponse(payment.status) : null,
+        refundAmountPence: payment?.amountPence ?? null,
+        currency: payment?.currency ?? null,
+        stripeRefundId: payment?.stripeRefundId ?? null,
+        refundRequestedAt: payment?.refundRequestedAt ?? null,
+        refundedAt: payment?.refundedAt ?? null,
+        refundFailedAt: payment?.refundFailedAt ?? null,
+        reviewEligibility: getReviewEligibility({
+          status: appointment.status,
+          dateTime: appointment.dateTime,
+          durationMinutes: appointment.durationMinutes,
+          hasReview: Boolean(appointment.review),
+        }),
+      };
+    });
   }
 
   async availableForReschedule(user: AuthUser, id: string, date: string) {
@@ -348,6 +373,11 @@ export class AppointmentsService {
   }
 
   async cancel(user: AuthUser, id: string) {
+    const refund = await this.payments.cancelAndRefund(user, id);
+    if (refund) {
+      return refund;
+    }
+
     const existing = await this.findOwned(user.id, id);
     if (existing.status === AppointmentStatus.Cancelled) {
       return existing;
@@ -581,4 +611,8 @@ export class AppointmentsService {
     }
     throw error;
   }
+}
+
+function paymentStatusResponse(status: PaymentStatus): string {
+  return status.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
 }

@@ -258,6 +258,10 @@ let BookingsService = class BookingsService {
         return toBookingMutationResponse(updated, "Appointment rescheduled successfully");
     }
     async cancel(user, id) {
+        const refund = await this.payments.cancelAndRefund(user, id);
+        if (refund) {
+            return refund;
+        }
         const existing = await this.findOwnedWithUser(user.id, id);
         if (existing.status === AppointmentStatus.Cancelled) {
             return toBookingMutationResponse(existing, "Appointment cancelled successfully");

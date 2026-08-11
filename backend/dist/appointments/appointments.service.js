@@ -51,18 +51,43 @@ let AppointmentsService = class AppointmentsService {
     async listMine(user) {
         const appointments = await this.prisma.appointment.findMany({
             where: { userId: user.id },
-            include: { review: { select: { id: true } } },
+            include: {
+                review: { select: { id: true } },
+                payments: {
+                    orderBy: { createdAt: "desc" },
+                    take: 1,
+                    select: {
+                        status: true,
+                        amountPence: true,
+                        currency: true,
+                        stripeRefundId: true,
+                        refundRequestedAt: true,
+                        refundedAt: true,
+                        refundFailedAt: true,
+                    },
+                },
+            },
             orderBy: { dateTime: "asc" },
         });
-        return appointments.map((appointment) => ({
-            ...appointment,
-            reviewEligibility: getReviewEligibility({
-                status: appointment.status,
-                dateTime: appointment.dateTime,
-                durationMinutes: appointment.durationMinutes,
-                hasReview: Boolean(appointment.review),
-            }),
-        }));
+        return appointments.map(({ payments, ...appointment }) => {
+            const payment = payments[0];
+            return {
+                ...appointment,
+                paymentStatus: payment ? paymentStatusResponse(payment.status) : null,
+                refundAmountPence: payment?.amountPence ?? null,
+                currency: payment?.currency ?? null,
+                stripeRefundId: payment?.stripeRefundId ?? null,
+                refundRequestedAt: payment?.refundRequestedAt ?? null,
+                refundedAt: payment?.refundedAt ?? null,
+                refundFailedAt: payment?.refundFailedAt ?? null,
+                reviewEligibility: getReviewEligibility({
+                    status: appointment.status,
+                    dateTime: appointment.dateTime,
+                    durationMinutes: appointment.durationMinutes,
+                    hasReview: Boolean(appointment.review),
+                }),
+            };
+        });
     }
     async availableForReschedule(user, id, date) {
         const existing = await this.findOwned(user.id, id);
@@ -298,6 +323,10 @@ let AppointmentsService = class AppointmentsService {
         };
     }
     async cancel(user, id) {
+        const refund = await this.payments.cancelAndRefund(user, id);
+        if (refund) {
+            return refund;
+        }
         const existing = await this.findOwned(user.id, id);
         if (existing.status === AppointmentStatus.Cancelled) {
             return existing;
@@ -511,3 +540,6 @@ AppointmentsService = __decorate([
         PaymentsService])
 ], AppointmentsService);
 export { AppointmentsService };
+function paymentStatusResponse(status) {
+    return status.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
+}

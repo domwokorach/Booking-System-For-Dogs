@@ -334,6 +334,11 @@ export class BookingsService {
   }
 
   async cancel(user: AuthUser, id: string) {
+    const refund = await this.payments.cancelAndRefund(user, id);
+    if (refund) {
+      return refund;
+    }
+
     const existing = await this.findOwnedWithUser(user.id, id);
     if (existing.status === AppointmentStatus.Cancelled) {
       return toBookingMutationResponse(

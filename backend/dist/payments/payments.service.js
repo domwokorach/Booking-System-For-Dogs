@@ -181,6 +181,11 @@ let PaymentsService = class PaymentsService {
         else if (event.type === "checkout.session.expired") {
             await this.markUnsuccessfulSession(event.data.object, PaymentStatus.Expired);
         }
+        else if (event.type === "refund.created" ||
+            event.type === "refund.updated" ||
+            event.type === "refund.failed") {
+            await this.updateRefundStatus(event.data.object);
+        }
         return { received: true };
     }
     async getSessionStatus(user, sessionId) {
@@ -221,6 +226,116 @@ let PaymentsService = class PaymentsService {
         await this.cancelPendingAppointment(payment.id, appointmentId, payment.userId, PaymentStatus.Expired);
         return { success: true, message: "Payment and pending appointment cancelled." };
     }
+    async cancelAndRefund(user, appointmentId) {
+        const payment = await this.prisma.payment.findFirst({
+            where: {
+                appointmentId,
+                userId: user.id,
+                status: {
+                    in: [
+                        PaymentStatus.Paid,
+                        PaymentStatus.RefundPending,
+                        PaymentStatus.Refunded,
+                        PaymentStatus.RefundFailed,
+                    ],
+                },
+            },
+            include: {
+                appointment: { include: { user: true, serviceRef: true } },
+            },
+            orderBy: { createdAt: "desc" },
+        });
+        if (!payment) {
+            return null;
+        }
+        if (payment.status === PaymentStatus.RefundPending) {
+            return this.refundResponse(payment, "Your booking is cancelled and the refund is still processing.");
+        }
+        if (payment.status === PaymentStatus.Refunded) {
+            return this.refundResponse(payment, "Your booking is cancelled and the refund has been completed.");
+        }
+        if (payment.status === PaymentStatus.RefundFailed) {
+            return this.refundResponse(payment, "Your booking is cancelled, but Stripe could not complete the refund. Please contact us.");
+        }
+        if (!payment.stripePaymentIntentId) {
+            throw new BadRequestException("The Stripe payment reference is missing. Please contact us before cancelling.");
+        }
+        const stripe = this.requireStripe();
+        let refund;
+        try {
+            refund = await stripe.refunds.create({
+                payment_intent: payment.stripePaymentIntentId,
+                reason: "requested_by_customer",
+                metadata: {
+                    appointmentId,
+                    bookingId: appointmentId,
+                    paymentId: payment.id,
+                    userId: user.id,
+                },
+            }, { idempotencyKey: `pawside-refund-${payment.id}` });
+        }
+        catch {
+            throw new BadGatewayException("Unable to request the Stripe refund. Your booking has not been cancelled; please try again.");
+        }
+        const now = new Date();
+        const result = await this.prisma.$transaction(async (transaction) => {
+            const claimed = await transaction.payment.updateMany({
+                where: { id: payment.id, status: PaymentStatus.Paid },
+                data: {
+                    status: PaymentStatus.RefundPending,
+                    stripeRefundId: refund.id,
+                    refundRequestedAt: now,
+                    refundFailedAt: null,
+                    refundFailureReason: null,
+                },
+            });
+            const cancelled = await transaction.appointment.updateMany({
+                where: {
+                    id: appointmentId,
+                    userId: user.id,
+                    status: { not: AppointmentStatus.Cancelled },
+                },
+                data: {
+                    status: AppointmentStatus.Cancelled,
+                    cancelledAt: now,
+                },
+            });
+            const currentPayment = await transaction.payment.findUniqueOrThrow({
+                where: { id: payment.id },
+                include: {
+                    appointment: { include: { user: true, serviceRef: true } },
+                },
+            });
+            return {
+                payment: currentPayment,
+                refundClaimed: claimed.count === 1,
+                appointmentCancelled: cancelled.count === 1,
+            };
+        });
+        if (result.appointmentCancelled) {
+            this.realtime.emitToUser(user.id, "appointments:cancelled", {
+                appointmentId,
+                dateTime: result.payment.appointment.dateTime,
+                status: AppointmentStatus.Cancelled,
+            });
+        }
+        if (result.refundClaimed) {
+            await this.email.sendRefundRequested({
+                to: result.payment.appointment.user.email,
+                firstName: result.payment.appointment.user.firstName,
+                bookingId: appointmentId,
+                service: result.payment.appointment.serviceRef?.name ??
+                    result.payment.appointment.service,
+                appointmentDateTime: result.payment.appointment.dateTime,
+                status: AppointmentStatus.Cancelled,
+                amountPence: result.payment.amountPence,
+                currency: result.payment.currency,
+                paymentStatus: "REFUND_PENDING",
+                refundId: refund.id,
+            });
+        }
+        return this.refundResponse(result.payment, "Your booking has been cancelled and your refund has been requested.");
+    }
     async fulfillPaidSession(session) {
         const payment = await this.findPaymentForSession(session);
         if (!payment) {
@@ -238,7 +353,7 @@ let PaymentsService = class PaymentsService {
             : session.invoice?.id;
         const result = await this.prisma.$transaction(async (transaction) => {
             const claimed = await transaction.payment.updateMany({
-                where: { id: payment.id, status: { not: PaymentStatus.Paid } },
+                where: { id: payment.id, status: PaymentStatus.Pending },
                 data: {
                     status: PaymentStatus.Paid,
                     stripeCheckoutSessionId: session.id,
@@ -304,7 +419,7 @@ let PaymentsService = class PaymentsService {
     }
     async markUnsuccessfulSession(session, status) {
         const payment = await this.findPaymentForSession(session);
-        if (!payment || payment.status === PaymentStatus.Paid) {
+        if (!payment || payment.status !== PaymentStatus.Pending) {
             return;
         }
         await this.cancelPendingAppointment(payment.id, payment.appointmentId, payment.userId, status);
@@ -351,6 +466,83 @@ let PaymentsService = class PaymentsService {
             },
         });
     }
+    async updateRefundStatus(refund) {
+        const paymentId = refund.metadata?.paymentId;
+        const payment = await this.prisma.payment.findFirst({
+            where: {
+                OR: [
+                    { stripeRefundId: refund.id },
+                    ...(paymentId ? [{ id: paymentId }] : []),
+                ],
+            },
+            include: {
+                appointment: { include: { user: true, serviceRef: true } },
+            },
+        });
+        if (!payment) {
+            throw new BadRequestException("Stripe refund payment record not found.");
+        }
+        if (refund.amount !== payment.amountPence ||
+            refund.currency.toLowerCase() !== payment.currency.toLowerCase()) {
+            throw new BadRequestException("Stripe refund amount does not match.");
+        }
+        const nextStatus = refund.status === "succeeded"
+            ? PaymentStatus.Refunded
+            : refund.status === "failed" || refund.status === "canceled"
+                ? PaymentStatus.RefundFailed
+                : PaymentStatus.RefundPending;
+        const now = new Date();
+        const changed = await this.prisma.payment.updateMany({
+            where: {
+                id: payment.id,
+                status: nextStatus === PaymentStatus.Refunded
+                    ? { not: PaymentStatus.Refunded }
+                    : nextStatus === PaymentStatus.RefundFailed
+                        ? { notIn: [PaymentStatus.Refunded, PaymentStatus.RefundFailed] }
+                        : PaymentStatus.Paid,
+            },
+            data: {
+                status: nextStatus,
+                stripeRefundId: refund.id,
+                refundRequestedAt: payment.refundRequestedAt ?? now,
+                refundedAt: nextStatus === PaymentStatus.Refunded ? now : null,
+                refundFailedAt: nextStatus === PaymentStatus.RefundFailed ? now : null,
+                refundFailureReason: nextStatus === PaymentStatus.RefundFailed
+                    ? refund.failure_reason ?? "unknown"
+                    : null,
+            },
+        });
+        if (changed.count !== 1) {
+            return;
+        }
+        this.realtime.emitToUser(payment.userId, "appointments:updated", {
+            appointmentId: payment.appointmentId,
+            status: AppointmentStatus.Cancelled,
+            paymentStatus: paymentStatusResponse(nextStatus),
+        });
+        const emailData = {
+            to: payment.appointment.user.email,
+            firstName: payment.appointment.user.firstName,
+            bookingId: payment.appointmentId,
+            service: payment.appointment.serviceRef?.name ?? payment.appointment.service,
+            appointmentDateTime: payment.appointment.dateTime,
+            status: AppointmentStatus.Cancelled,
+            amountPence: payment.amountPence,
+            currency: payment.currency,
+            paymentStatus: paymentStatusResponse(nextStatus),
+            refundId: refund.id,
+            refundFailureReason: refund.failure_reason,
+        };
+        if (nextStatus === PaymentStatus.Refunded) {
+            await this.email.sendRefundConfirmation(emailData);
+        }
+        else if (nextStatus === PaymentStatus.RefundFailed) {
+            await this.email.sendRefundFailure(emailData);
+        }
+        else if (nextStatus === PaymentStatus.RefundPending) {
+            await this.email.sendRefundRequested(emailData);
+        }
+    }
     findOwnedPayment(userId, sessionId) {
         return this.prisma.payment
             .findFirst({
@@ -372,6 +564,19 @@ let PaymentsService = class PaymentsService {
             expiresAt: new Date(session.expires_at * 1000),
         };
     }
+    refundResponse(payment, message) {
+        return {
+            success: true,
+            appointmentId: payment.appointmentId,
+            status: AppointmentStatus.Cancelled,
+            paymentStatus: paymentStatusResponse(payment.status),
+            refundStatus: paymentStatusResponse(payment.status),
+            refundId: payment.stripeRefundId,
+            refundAmountPence: payment.amountPence,
+            currency: payment.currency,
+            message,
+        };
+    }
     requireStripe() {
         if (!this.stripe) {
             throw new ServiceUnavailableException("Stripe is not configured. Add STRIPE_SECRET_KEY to the backend environment.");
@@ -388,4 +593,7 @@ PaymentsService = __decorate([
 export { PaymentsService };
 function randomLetterSuffix() {
     return Array.from(randomBytes(8), (byte) => String.fromCharCode(97 + (byte % 26))).join("");
+}
+function paymentStatusResponse(status) {
+    return status.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
 }

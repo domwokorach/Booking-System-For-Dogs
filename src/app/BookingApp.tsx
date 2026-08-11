@@ -82,6 +82,13 @@ interface AppointmentRecord {
     reason: "AVAILABLE" | "ALREADY_REVIEWED" | "CANCELLED" | "NOT_FINISHED";
     availableAt: string | null;
   };
+  paymentStatus?: string | null;
+  refundAmountPence?: number | null;
+  currency?: string | null;
+  stripeRefundId?: string | null;
+  refundRequestedAt?: string | null;
+  refundedAt?: string | null;
+  refundFailedAt?: string | null;
 }
 
 interface ReviewRecord {
@@ -111,6 +118,10 @@ interface AppointmentMutationResponse {
   checkoutUrl?: string;
   checkoutSessionId?: string;
   paymentStatus?: string;
+  refundStatus?: string;
+  refundId?: string | null;
+  refundAmountPence?: number;
+  currency?: string;
   message?: string;
 }
 
@@ -332,6 +343,17 @@ function formatReviewDate(value: string): string {
     dateStyle: "medium",
     timeZone: BUSINESS_TIME_ZONE,
   }).format(new Date(value));
+}
+
+function formatPaymentAmount(amountPence?: number | null, currency?: string | null): string {
+  if (amountPence === undefined || amountPence === null || !currency) {
+    return "your payment";
+  }
+
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: currency.toUpperCase(),
+  }).format(amountPence / 100);
 }
 
 function resolveAvatarUrl(value: string): string {
@@ -1435,13 +1457,25 @@ export default function BookingApp() {
     if (!token) {
       return;
     }
+    const selectedAppointment = appointments.find(
+      (appointment) => appointment.id === appointmentId,
+    );
+    if (action === "cancel") {
+      const paid = selectedAppointment?.paymentStatus === "PAID";
+      const confirmed = window.confirm(
+        paid
+          ? "Are you sure you want to cancel this appointment and request a full refund?"
+          : "Are you sure you want to cancel this appointment?",
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
     setLoading(true);
     try {
       const requiresPayment =
         action === "confirm" &&
-        appointments
-          .find((appointment) => appointment.id === appointmentId)
-          ?.status.toLowerCase() === "pending";
+        selectedAppointment?.status.toLowerCase() === "pending";
       const endpoint =
         requiresPayment
           ? `${API_BASE}/api/payments/checkout/${appointmentId}`
@@ -1464,8 +1498,18 @@ export default function BookingApp() {
         setBookingNotificationRecipient(data.notificationRecipient);
       }
 
+      const refundAmount = formatPaymentAmount(
+        data.refundAmountPence,
+        data.currency,
+      );
       setFeedback(
-        action === "confirm" && data.emailDelivered && data.notificationRecipient
+        data.refundStatus === "REFUND_PENDING"
+          ? `Booking cancelled. Your refund of ${refundAmount} is processing. Most card refunds appear within approximately 5–10 business days, depending on your bank.`
+          : data.refundStatus === "REFUNDED"
+            ? `Booking cancelled. Your refund of ${refundAmount} has been processed. Please allow approximately 5–10 business days for it to appear, depending on your bank.`
+            : data.refundStatus === "REFUND_FAILED"
+              ? `Booking cancelled, but Stripe could not complete your refund of ${refundAmount}. Please contact us so we can arrange an alternative refund.`
+              : action === "confirm" && data.emailDelivered && data.notificationRecipient
           ? `Appointment confirmed. A confirmation email has been sent to ${data.notificationRecipient}.`
           : action === "confirm"
             ? "Appointment confirmed, but the confirmation email could not be delivered. Please check your registered email address or contact us."
@@ -1924,6 +1968,10 @@ export default function BookingApp() {
                       const canLeaveReview =
                         appointment.reviewEligibility?.canReview ??
                         canReviewAppointment(appointment);
+                      const refundAmount = formatPaymentAmount(
+                        appointment.refundAmountPence,
+                        appointment.currency,
+                      );
 
                       return (
                         <div key={appointment.id} className="rounded-2xl border border-border bg-background p-5">
@@ -1935,13 +1983,31 @@ export default function BookingApp() {
                             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${status.badgeClass}`}>{status.label}</span>
                           </div>
                           {appointment.notes ? <p className="mt-3 text-sm text-muted-foreground">{appointment.notes}</p> : null}
+                          {appointment.paymentStatus === "REFUND_PENDING" ? (
+                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                              <p className="font-semibold">Refund processing — {refundAmount}</p>
+                              <p className="mt-1">Most card refunds appear within approximately 5–10 business days, depending on your bank.</p>
+                            </div>
+                          ) : appointment.paymentStatus === "REFUNDED" ? (
+                            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                              <p className="font-semibold">Refund completed — {refundAmount}</p>
+                              <p className="mt-1">The refund has been processed. Your bank may take approximately 5–10 business days to display it.</p>
+                            </div>
+                          ) : appointment.paymentStatus === "REFUND_FAILED" ? (
+                            <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                              <p className="font-semibold">Refund requires attention — {refundAmount}</p>
+                              <p className="mt-1">Stripe could not complete the refund. Please contact us so we can arrange an alternative.</p>
+                            </div>
+                          ) : null}
                           <div className="mt-4 flex flex-wrap gap-2">
                             {appointment.status.toLowerCase() === "pending" || appointment.status.toLowerCase() === "rescheduled" ? (
                               <button onClick={() => handleAppointmentAction(appointment.id, "confirm")} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
                                 {appointment.status.toLowerCase() === "pending" ? "Pay now" : "Confirm"}
                               </button>
                             ) : null}
-                            <button onClick={() => handleAppointmentAction(appointment.id, "cancel")} className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">Cancel</button>
+                            {appointment.status.toLowerCase() !== "cancelled" ? (
+                              <button onClick={() => handleAppointmentAction(appointment.id, "cancel")} className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">Cancel</button>
+                            ) : null}
                             <button onClick={() => handleDeleteAppointment(appointment.id)} disabled={loading} className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-60">
                               <span className="inline-flex items-center gap-1">
                                 <Trash2 size={14} />

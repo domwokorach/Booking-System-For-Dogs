@@ -169,10 +169,13 @@ publishable key is configured for future client-side Stripe.js features only;
 the secret key must remain in `backend/.env`.
 
 For local webhook delivery, run the Stripe CLI in a separate terminal and copy
-the displayed `whsec_...` signing secret into `STRIPE_WEBHOOK_SECRET`:
+the displayed `whsec_...` signing secret into `STRIPE_WEBHOOK_SECRET`. Include
+both Checkout and refund lifecycle events:
 
 ```bash
-stripe listen --forward-to http://localhost:3000/api/payments/webhook
+stripe listen \
+  --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,checkout.session.expired,refund.created,refund.updated,refund.failed \
+  --forward-to http://localhost:3000/api/payments/webhook
 ```
 
 An authenticated customer starts or resumes Checkout with
@@ -180,6 +183,15 @@ An authenticated customer starts or resumes Checkout with
 but that return page is informational only: only a signature-verified Stripe
 webhook changes the payment to `PAID` and the appointment to `CONFIRMED`. The
 confirmation email is sent after that database transaction succeeds.
+
+Cancelling a paid appointment creates one full Stripe refund using the stored
+PaymentIntent and a stable idempotency key. The appointment changes to
+`CANCELLED` and the payment changes to `REFUND_PENDING`; cancelled appointments
+no longer reserve their time slot. Only a signature-verified `refund.created`,
+`refund.updated`, or `refund.failed` webhook can move the payment to `REFUNDED`
+or `REFUND_FAILED`. Customer emails are sent when the refund is requested and
+when Stripe confirms its final state. Configure the production Stripe webhook
+endpoint to deliver all three refund events.
 
 This schema keeps appointment and payment state in normalized tables. Inspect
 the latest payment for each appointment with:
@@ -189,10 +201,20 @@ SELECT
   a.id,
   a.status,
   p.status AS "paymentStatus",
-  p."stripeCheckoutSessionId"
+  p."stripeCheckoutSessionId",
+  p."stripeRefundId",
+  p."refundRequestedAt",
+  p."refundedAt",
+  p."refundFailedAt"
 FROM "Appointment" AS a
 LEFT JOIN LATERAL (
-  SELECT status, "stripeCheckoutSessionId"
+  SELECT
+    status,
+    "stripeCheckoutSessionId",
+    "stripeRefundId",
+    "refundRequestedAt",
+    "refundedAt",
+    "refundFailedAt"
   FROM "Payment"
   WHERE "appointmentId" = a.id
   ORDER BY "createdAt" DESC

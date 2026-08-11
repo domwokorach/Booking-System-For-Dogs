@@ -5,7 +5,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
 import { Injectable } from "@nestjs/common";
-import { sendAccountDeletionRequestEmails, sendBookingCancellationEmail, sendBookingConfirmationEmail, sendBookingUpdateEmail, sendDeletionRequestEmail, sendPasswordResetEmail, } from "../services/email.service.js";
+import { sendAccountDeletionRequestEmails, sendBookingCancellationEmail, sendBookingConfirmationEmail, sendBookingUpdateEmail, sendDeletionRequestEmail, sendPasswordResetEmail, sendRefundConfirmationEmail, sendRefundFailureEmail, sendRefundRequestedEmail, } from "../services/email.service.js";
 let EmailService = class EmailService {
     sendBookingConfirmation(data) {
         return sendBookingConfirmationEmail(data);
@@ -15,6 +15,15 @@ let EmailService = class EmailService {
     }
     sendBookingCancellation(data) {
         return sendBookingCancellationEmail(data);
+    }
+    sendRefundRequested(data) {
+        return sendRefundRequestedEmail(data);
+    }
+    sendRefundConfirmation(data) {
+        return sendRefundConfirmationEmail(data);
+    }
+    sendRefundFailure(data) {
+        return sendRefundFailureEmail(data);
     }
     sendDeletionRequest(data) {
         return sendDeletionRequestEmail(data);
