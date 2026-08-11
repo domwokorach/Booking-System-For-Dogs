@@ -103,6 +103,7 @@ export class PaymentsService {
         integration_identifier: `pawside_checkout_${randomLetterSuffix()}`,
         client_reference_id: input.appointmentId,
         customer_email: input.customerEmail,
+        invoice_creation: { enabled: true },
         billing_address_collection: "required",
         line_items: [
           {
@@ -289,6 +290,10 @@ export class PaymentsService {
       typeof session.payment_intent === "string"
         ? session.payment_intent
         : session.payment_intent?.id;
+    const invoiceId =
+      typeof session.invoice === "string"
+        ? session.invoice
+        : session.invoice?.id;
     const result = await this.prisma.$transaction(async (transaction) => {
       const claimed = await transaction.payment.updateMany({
         where: { id: payment.id, status: { not: PaymentStatus.Paid } },
@@ -296,10 +301,21 @@ export class PaymentsService {
           status: PaymentStatus.Paid,
           stripeCheckoutSessionId: session.id,
           stripePaymentIntentId: paymentIntentId,
+          stripeInvoiceId: invoiceId,
           paidAt: new Date(),
           failedAt: null,
         },
       });
+      if (claimed.count === 0 && invoiceId) {
+        await transaction.payment.updateMany({
+          where: {
+            id: payment.id,
+            status: PaymentStatus.Paid,
+            stripeInvoiceId: null,
+          },
+          data: { stripeInvoiceId: invoiceId },
+        });
+      }
       const confirmed = await transaction.appointment.updateMany({
         where: {
           id: payment.appointmentId,

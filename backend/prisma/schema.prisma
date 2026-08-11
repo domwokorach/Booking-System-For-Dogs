@@ -96,6 +96,7 @@ model Payment {
   service                 Service       @relation(fields: [serviceId], references: [id], onDelete: Restrict)
   stripeCheckoutSessionId String?       @unique
   stripePaymentIntentId   String?       @unique
+  stripeInvoiceId         String?       @unique
   amountPence             Int
   currency                String        @default("gbp")
   status                  PaymentStatus @default(Pending)
