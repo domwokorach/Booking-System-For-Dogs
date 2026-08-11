@@ -5,7 +5,9 @@ import { AppModule } from "./app.module.js";
 import { configureNestApplication } from "./bootstrap.js";
 import { env } from "./config/env.js";
 async function bootstrap() {
-    const app = await NestFactory.create(AppModule);
+    const app = await NestFactory.create(AppModule, {
+        rawBody: true,
+    });
     configureNestApplication(app);
     await app.listen(env.PORT, "0.0.0.0");
     Logger.log(`Backend API listening on port ${env.PORT}`, "Bootstrap");

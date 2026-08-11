@@ -23,6 +23,9 @@ const rawEnvSchema = z.object({
     BOOKING_EMAIL_TO: z
         .union([z.string().email(), z.literal("")])
         .default("dominic.olanya@gmail.com"),
+    STRIPE_SECRET_KEY: z.string().default(""),
+    STRIPE_WEBHOOK_SECRET: z.string().default(""),
+    STRIPE_CURRENCY: z.string().length(3).default("gbp"),
     STORAGE_PROVIDER: z.enum(["s3", "gcs"]).default("s3"),
     AWS_REGION: z.string().default("us-east-1"),
     AWS_S3_BUCKET: z.string().default(""),

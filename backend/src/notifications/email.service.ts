@@ -1,7 +1,6 @@
 import { Injectable } from "@nestjs/common";
 
 import {
-  resolveBookingRecipient,
   sendAccountDeletionRequestEmails,
   sendBookingCancellationEmail,
   sendBookingConfirmationEmail,
@@ -30,10 +29,6 @@ export type AccountDeletionRequestEmailData = {
 
 @Injectable()
 export class EmailService {
-  resolveBookingRecipient(defaultRecipient: string): string {
-    return resolveBookingRecipient(defaultRecipient);
-  }
-
   sendBookingConfirmation(data: BookingEmailData): Promise<boolean> {
     return sendBookingConfirmationEmail(data);
   }

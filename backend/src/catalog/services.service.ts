@@ -15,6 +15,7 @@ export class ServicesService {
         name: true,
         description: true,
         durationMinutes: true,
+        pricePence: true,
         active: true,
       },
     });

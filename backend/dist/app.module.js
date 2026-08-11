@@ -12,6 +12,7 @@ import { BookingsModule } from "./bookings/bookings.module.js";
 import { ServicesModule } from "./catalog/services.module.js";
 import { FilesModule } from "./files/files.module.js";
 import { NotificationsModule } from "./notifications/notifications.module.js";
+import { PaymentsModule } from "./payments/payments.module.js";
 import { PrismaModule } from "./prisma/prisma.module.js";
 import { RealtimeModule } from "./realtime/realtime.module.js";
 import { ReviewsModule } from "./reviews/reviews.module.js";
@@ -25,6 +26,7 @@ AppModule = __decorate([
         imports: [
             PrismaModule,
             NotificationsModule,
+            PaymentsModule,
             SchedulingModule,
             AuthModule,
             RealtimeModule,

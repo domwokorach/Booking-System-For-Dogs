@@ -12,6 +12,7 @@ import type { AuthUser } from "../auth/auth.types.js";
 import { env } from "../config/env.js";
 import { EmailService } from "../notifications/email.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { PaymentsService } from "../payments/payments.service.js";
 import { RealtimeGateway } from "../realtime/realtime.gateway.js";
 import { AppointmentSlotsService } from "../scheduling/appointment-slots.service.js";
 import {
@@ -43,6 +44,7 @@ export class BookingsService {
     private readonly appointmentSlots: AppointmentSlotsService,
     private readonly email: EmailService,
     private readonly realtime: RealtimeGateway,
+    private readonly payments: PaymentsService,
   ) {}
 
   async createAndConfirm(user: AuthUser, body: CreateBookingInput) {
@@ -69,8 +71,7 @@ export class BookingsService {
               serviceId: service.id,
               service: service.name,
               durationMinutes: service.durationMinutes,
-              status: AppointmentStatus.Confirmed,
-              confirmedAt: new Date(),
+              status: AppointmentStatus.Pending,
             },
             include: { user: { select: bookingUserSelect } },
           }),
@@ -84,18 +85,31 @@ export class BookingsService {
       dateTime: appointment.dateTime,
       status: appointment.status,
     });
-    await this.email.sendBookingConfirmation({
-      to: appointment.user.email,
-      firstName: appointment.user.firstName,
-      bookingId: appointment.id,
-      service: appointment.service,
-      appointmentDateTime: appointment.dateTime,
-      status: toApiStatus(appointment.status),
-    });
-    return toBookingMutationResponse(
-      appointment,
-      "Appointment confirmed successfully",
-    );
+    try {
+      const checkout = await this.payments.createCheckout({
+        appointmentId: appointment.id,
+        userId: appointment.userId,
+        customerEmail: appointment.user.email,
+        customerName: `${appointment.user.firstName} ${appointment.user.surname}`,
+        serviceId: service.id,
+        serviceName: service.name,
+        amountPence: service.pricePence,
+        appointmentDateTime: appointment.dateTime,
+      });
+      return {
+        ...toBookingMutationResponse(
+          appointment,
+          "Appointment reserved. Complete payment to confirm.",
+        ),
+        ...checkout,
+      };
+    } catch (error) {
+      await this.prisma.appointment.updateMany({
+        where: { id: appointment.id, status: AppointmentStatus.Pending },
+        data: { status: AppointmentStatus.Cancelled, cancelledAt: new Date() },
+      });
+      throw error;
+    }
   }
 
   async listMine(user: AuthUser) {
@@ -175,6 +189,31 @@ export class BookingsService {
         "Appointment confirmed successfully",
       );
     }
+    if (existing.status === AppointmentStatus.Pending) {
+      if (!existing.serviceId) {
+        throw new BadRequestException(
+          "This appointment does not have a payable service.",
+        );
+      }
+      const service = await this.resolveActiveService(existing.serviceId);
+      const checkout = await this.payments.createCheckout({
+        appointmentId: existing.id,
+        userId: existing.userId,
+        customerEmail: existing.user.email,
+        customerName: `${existing.user.firstName} ${existing.user.surname}`,
+        serviceId: service.id,
+        serviceName: service.name,
+        amountPence: service.pricePence,
+        appointmentDateTime: existing.dateTime,
+      });
+      return {
+        ...toBookingMutationResponse(
+          existing,
+          "Complete payment to confirm this appointment.",
+        ),
+        ...checkout,
+      };
+    }
 
     const updated = await this.prisma.$transaction(async (transaction) => {
       const changed = await transaction.appointment.updateMany({
@@ -202,7 +241,7 @@ export class BookingsService {
       dateTime: updated.dateTime,
       status: updated.status,
     });
-    await this.email.sendBookingConfirmation({
+    const emailDelivered = await this.email.sendBookingConfirmation({
       to: updated.user.email,
       firstName: updated.user.firstName,
       bookingId: updated.id,
@@ -210,10 +249,14 @@ export class BookingsService {
       appointmentDateTime: updated.dateTime,
       status: toApiStatus(updated.status),
     });
-    return toBookingMutationResponse(
-      updated,
-      "Appointment confirmed successfully",
-    );
+    return {
+      ...toBookingMutationResponse(
+        updated,
+        "Appointment confirmed successfully",
+      ),
+      notificationRecipient: updated.user.email,
+      emailDelivered,
+    };
   }
 
   async reschedule(
@@ -392,7 +435,7 @@ export class BookingsService {
   private async resolveActiveService(id: string) {
     const service = await this.prisma.service.findFirst({
       where: { id, active: true },
-      select: { id: true, name: true, durationMinutes: true },
+      select: { id: true, name: true, durationMinutes: true, pricePence: true },
     });
     if (!service) {
       throw new NotFoundException("Service not found.");

@@ -108,7 +108,9 @@ export async function sendBookingConfirmationEmail(data: BookingEmailData) {
       }),
     ),
   );
-  return results.every(Boolean);
+  // The registered customer is always first; optional administrator copies do
+  // not determine whether customer delivery succeeded.
+  return results[0] ?? false;
 }
 
 export async function sendBookingUpdateEmail(data: BookingEmailData) {

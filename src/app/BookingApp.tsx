@@ -107,7 +107,17 @@ interface AppointmentMutationResponse {
   createdAt?: string;
   updatedAt?: string;
   notificationRecipient?: string;
+  emailDelivered?: boolean;
+  checkoutUrl?: string;
+  checkoutSessionId?: string;
+  paymentStatus?: string;
   message?: string;
+}
+
+interface PaymentReturnState {
+  result: "success" | "cancelled";
+  sessionId: string | null;
+  appointmentId: string | null;
 }
 
 const API_BASE = import.meta.env.VITE_API_URL?.trim() || "";
@@ -140,7 +150,7 @@ const SERVICES = [
     id: "grooming" as ServiceId,
     name: "Grooming",
     Icon: Scissors,
-    price: "£55 – £95",
+    price: "£55",
     duration: "~2 hours",
     desc: "Full spa treatment — bath, blow-dry, brush-out, and breed-specific trim.",
     iconBg: "bg-amber-100",
@@ -380,6 +390,19 @@ export default function BookingApp() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [bookingNotificationRecipient, setBookingNotificationRecipient] = useState<string | null>(null);
+  const [bookingEmailDelivered, setBookingEmailDelivered] = useState<boolean | null>(null);
+  const [paymentReturn, setPaymentReturn] = useState<PaymentReturnState | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get("payment");
+    if (result !== "success" && result !== "cancelled") {
+      return null;
+    }
+    return {
+      result,
+      sessionId: params.get("session_id"),
+      appointmentId: params.get("appointmentId"),
+    };
+  });
   const [editingAppointmentId, setEditingAppointmentId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState({ service: null as ServiceId | null, notes: "" });
   const [rescheduleAppointmentId, setRescheduleAppointmentId] = useState<string | null>(null);
@@ -438,6 +461,9 @@ export default function BookingApp() {
     const deletionToken = searchParams.get("deleteAccountToken");
     const cancellationToken = searchParams.get("cancelDeleteAccountToken");
     const initialAppointmentDeletionToken = searchParams.get("deleteAppointmentToken");
+    if (searchParams.has("payment")) {
+      window.localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(Date.now()));
+    }
     const deletionActionView: CurrentView | null = cancellationToken
       ? "delete-account-cancel"
       : deletionToken
@@ -545,6 +571,80 @@ export default function BookingApp() {
       window.removeEventListener("focus", refreshWhenVisible);
     };
   }, [token]);
+
+  useEffect(() => {
+    if (!token || !paymentReturn) {
+      return;
+    }
+
+    let active = true;
+    async function resolvePaymentReturn() {
+      try {
+        if (paymentReturn.result === "success" && paymentReturn.sessionId) {
+          const response = await fetch(
+            `${API_BASE}/api/payments/session/${encodeURIComponent(paymentReturn.sessionId)}`,
+            { headers: { Authorization: `Bearer ${token}` } },
+          );
+          const data = (await response.json()) as {
+            paymentStatus?: string;
+            message?: string;
+          };
+          if (!response.ok) {
+            throw new Error(data.message || "Unable to verify the Stripe payment.");
+          }
+          if (active) {
+            setFeedback(
+              data.paymentStatus === "PAID"
+                ? "Payment successful. Your appointment is confirmed and the confirmation email is being sent."
+                : data.paymentStatus === "PENDING"
+                  ? "Stripe is processing your bank payment. Your appointment will be confirmed automatically when payment succeeds."
+                  : "The payment was not completed, so the appointment was not confirmed.",
+            );
+          }
+        } else if (
+          paymentReturn.result === "cancelled" &&
+          paymentReturn.appointmentId
+        ) {
+          const response = await fetch(
+            `${API_BASE}/api/payments/appointments/${encodeURIComponent(paymentReturn.appointmentId)}/cancel`,
+            {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+            },
+          );
+          if (!response.ok) {
+            const data = (await response.json()) as { message?: string };
+            throw new Error(data.message || "Unable to cancel the pending payment.");
+          }
+          if (active) {
+            setFeedback("Payment was cancelled. The appointment was not confirmed.");
+          }
+        }
+        if (active) {
+          setCurrentView("dashboard");
+          await loadAppointments();
+        }
+      } catch (error) {
+        if (active) {
+          setFeedback((error as Error).message);
+        }
+      } finally {
+        if (active) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("payment");
+          url.searchParams.delete("session_id");
+          url.searchParams.delete("appointmentId");
+          window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+          setPaymentReturn(null);
+        }
+      }
+    }
+
+    void resolvePaymentReturn();
+    return () => {
+      active = false;
+    };
+  }, [token, paymentReturn]);
 
   useEffect(() => {
     if (!token) {
@@ -1186,17 +1286,12 @@ export default function BookingApp() {
         throw new Error(data.message || "Unable to create the appointment.");
       }
 
-      const notificationRecipient = data.notificationRecipient ?? null;
-      setBookingStep("confirmed");
-      setBookingNotificationRecipient(notificationRecipient);
-      setFeedback(
-        notificationRecipient
-          ? `Appointment confirmed. A confirmation email has been sent to ${notificationRecipient}.`
-          : "Appointment confirmed. A confirmation email has been sent.",
-      );
-      setBooking({ service: null, time: null, notes: "" });
-      setSelectedDate(null);
-      void loadAppointments();
+      if (!data.checkoutUrl) {
+        throw new Error("Stripe Checkout is unavailable for this appointment.");
+      }
+
+      setFeedback("Appointment reserved. Redirecting to secure Stripe Checkout...");
+      window.location.assign(data.checkoutUrl);
     } catch (error) {
       setFeedback((error as Error).message);
     } finally {
@@ -1219,14 +1314,22 @@ export default function BookingApp() {
         throw new Error(data.message || `Unable to ${action} the appointment.`);
       }
 
+      if (action === "confirm" && data.checkoutUrl) {
+        setFeedback("Redirecting to secure Stripe Checkout...");
+        window.location.assign(data.checkoutUrl);
+        return;
+      }
+
       if (action === "confirm" && data.notificationRecipient) {
         setBookingNotificationRecipient(data.notificationRecipient);
       }
 
       setFeedback(
-        action === "confirm" && data.notificationRecipient
+        action === "confirm" && data.emailDelivered && data.notificationRecipient
           ? `Appointment confirmed. A confirmation email has been sent to ${data.notificationRecipient}.`
-          : `Appointment ${action === "confirm" ? "confirmed" : "cancelled"}.`,
+          : action === "confirm"
+            ? "Appointment confirmed, but the confirmation email could not be delivered. Please check your registered email address or contact us."
+            : "Appointment cancelled.",
       );
       await loadAppointments();
     } catch (error) {
@@ -1697,7 +1800,11 @@ export default function BookingApp() {
                           </div>
                           {appointment.notes ? <p className="mt-3 text-sm text-muted-foreground">{appointment.notes}</p> : null}
                           <div className="mt-4 flex flex-wrap gap-2">
-                            <button onClick={() => handleAppointmentAction(appointment.id, "confirm")} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">Confirm</button>
+                            {appointment.status.toLowerCase() === "pending" || appointment.status.toLowerCase() === "rescheduled" ? (
+                              <button onClick={() => handleAppointmentAction(appointment.id, "confirm")} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+                                {appointment.status.toLowerCase() === "pending" ? "Pay now" : "Confirm"}
+                              </button>
+                            ) : null}
                             <button onClick={() => handleAppointmentAction(appointment.id, "cancel")} className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">Cancel</button>
                             <button onClick={() => handleDeleteAppointment(appointment.id)} disabled={loading} className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-60">
                               <span className="inline-flex items-center gap-1">
@@ -1853,8 +1960,9 @@ export default function BookingApp() {
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-sm text-emerald-700">
                       <p className="font-semibold">Your appointment is confirmed.</p>
                       <p className="mt-2">
-                        A confirmation email has been sent
-                        {bookingNotificationRecipient ? ` to ${bookingNotificationRecipient}.` : "."}
+                        {bookingEmailDelivered
+                          ? `A confirmation email has been sent${bookingNotificationRecipient ? ` to ${bookingNotificationRecipient}.` : "."}`
+                          : "The confirmation email could not be delivered. Please check your registered email address or contact us."}
                       </p>
                       <button onClick={() => setBookingStep("select")} className="mt-4 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">Book another visit</button>
                     </div>
@@ -1912,7 +2020,7 @@ export default function BookingApp() {
                           </div>
                           <form onSubmit={handleBookingSubmit} className="space-y-3">
                             <textarea value={booking.notes} onChange={(event) => setBooking((current) => ({ ...current, notes: event.target.value }))} rows={3} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder="Add a note for the team" />
-                            <button disabled={!canProceed || loading} className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-70">{loading ? "Booking..." : "Confirm appointment"}</button>
+                            <button disabled={!canProceed || loading} className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-70">{loading ? "Reserving..." : "Confirm appointment & pay"}</button>
                             {!canProceed && bookingRequirementsMessage ? <p className="text-sm text-muted-foreground">{bookingRequirementsMessage}</p> : null}
                           </form>
                         </div>

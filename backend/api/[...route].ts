@@ -27,6 +27,7 @@ async function bootstrapNestServer(): Promise<NestServer> {
   const app = await NestFactory.create<NestExpressApplication>(
     AppModule,
     adapter,
+    { rawBody: true },
   );
 
   try {

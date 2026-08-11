@@ -20,6 +20,13 @@ enum AccountDeletionRequestStatus {
   COMPLETED
 }
 
+enum PaymentStatus {
+  Pending @map("PENDING")
+  Paid    @map("PAID")
+  Failed  @map("FAILED")
+  Expired @map("EXPIRED")
+}
+
 model User {
   id                     String                  @id @default(uuid())
   customerReference      String                  @unique
@@ -34,6 +41,7 @@ model User {
   refreshTokens          RefreshToken[]
   passwordResetTokens    PasswordResetToken[]
   accountDeletionRequest AccountDeletionRequest?
+  payments               Payment[]
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
 }
@@ -43,8 +51,10 @@ model Service {
   name            String        @unique
   description     String
   durationMinutes Int
+  pricePence      Int
   active          Boolean       @default(true)
   appointments    Appointment[]
+  payments        Payment[]
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 }
@@ -66,12 +76,37 @@ model Appointment {
   rescheduledFrom   DateTime?
   deletionRequest   AppointmentDeletionRequest?
   review            Review?
+  payments          Payment[]
   createdAt         DateTime                    @default(now())
   updatedAt         DateTime                    @updatedAt
 
   @@index([userId])
   @@index([dateTime])
   @@index([serviceId])
+}
+
+model Payment {
+  id                      String        @id @default(uuid())
+  appointmentId           String
+  appointment             Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  userId                  String
+  user                    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceId               String
+  service                 Service       @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  stripeCheckoutSessionId String?       @unique
+  stripePaymentIntentId   String?       @unique
+  amountPence             Int
+  currency                String        @default("gbp")
+  status                  PaymentStatus @default(Pending)
+  checkoutExpiresAt       DateTime?
+  paidAt                  DateTime?
+  failedAt                DateTime?
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  @@index([appointmentId, createdAt(sort: Desc)])
+  @@index([userId])
+  @@index([status])
 }
 
 model Review {

@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 
 import { AuthModule } from "../auth/auth.module.js";
+import { PaymentsModule } from "../payments/payments.module.js";
 import {
   AppointmentAvailabilityController,
   AppointmentDeletionController,
@@ -9,7 +10,7 @@ import {
 import { AppointmentsService } from "./appointments.service.js";
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, PaymentsModule],
   controllers: [
     AppointmentAvailabilityController,
     AppointmentDeletionController,

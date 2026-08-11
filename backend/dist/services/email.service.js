@@ -83,7 +83,9 @@ export async function sendBookingConfirmationEmail(data) {
         subject: "Booking confirmed",
         text: `Hi ${data.firstName},\n\nYour appointment has been confirmed.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nSelected service: ${formatService(data.service)}\nAppointment date: ${formatDate(data.appointmentDateTime)}\nAppointment time: ${formatTime(data.appointmentDateTime)}\nBooking status: ${data.status}\n\nWe look forward to seeing you.`,
     })));
-    return results.every(Boolean);
+    // The registered customer is always first; optional administrator copies do
+    // not determine whether customer delivery succeeded.
+    return results[0] ?? false;
 }
 export async function sendBookingUpdateEmail(data) {
     return sendMailSafely({
