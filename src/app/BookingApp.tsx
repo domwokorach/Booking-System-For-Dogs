@@ -57,6 +57,7 @@ interface BookingState {
 
 interface UserProfile {
   id: string;
+  customerReference: string;
   firstName: string;
   surname: string;
   email: string;
@@ -116,7 +117,7 @@ const SOCKET_BASE =
   (import.meta.env.DEV ? "http://localhost:4000" : "");
 const SESSION_STORAGE_KEY = "pawside-session";
 const LAST_ACTIVITY_STORAGE_KEY = "pawside-last-activity";
-const SESSION_INACTIVITY_TIMEOUT_MS = 2 * 60 * 1_000;
+const SESSION_INACTIVITY_TIMEOUT_MS = 5 * 60 * 1_000;
 const APPOINTMENT_REFRESH_INTERVAL_MS = 5_000;
 
 const MONTHS = [
@@ -243,13 +244,34 @@ function canReviewAppointment(appointment: AppointmentRecord): boolean {
   return appointmentEndsAt <= Date.now();
 }
 
+function formatReviewAvailableAt(value: string): string {
+  const availableAt = new Date(value);
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone: BUSINESS_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(availableAt);
+
+  if (businessDateKey(availableAt) === businessDateKey(new Date())) {
+    return `${time} today`;
+  }
+
+  const date = new Intl.DateTimeFormat("en-GB", {
+    timeZone: BUSINESS_TIME_ZONE,
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(availableAt);
+  return `${time} on ${date}`;
+}
+
 function reviewAvailabilityMessage(appointment: AppointmentRecord): string {
   const eligibility = appointment.reviewEligibility;
   if (eligibility?.reason === "CANCELLED") {
     return "Cancelled appointments cannot be reviewed.";
   }
   if (eligibility?.reason === "NOT_FINISHED" && eligibility.availableAt) {
-    return `Leave a Review becomes available after ${formatAppointmentDate(eligibility.availableAt)}.`;
+    return `You can leave a review after your appointment finishes at ${formatReviewAvailableAt(eligibility.availableAt)}.`;
   }
   if (!eligibility && !canReviewAppointment(appointment)) {
     return "Leave a Review becomes available after this appointment finishes.";
@@ -504,6 +526,7 @@ export default function BookingApp() {
       return;
     }
 
+    void loadCurrentUser();
     void loadAppointments();
 
     const refreshWhenVisible = () => {
@@ -551,7 +574,7 @@ export default function BookingApp() {
       }
 
       clearSession();
-      setFeedback("You were logged out after 2 minutes of inactivity.");
+      setFeedback("You were logged out after 5 minutes of inactivity.");
     }
 
     function recordActivity() {
@@ -666,6 +689,32 @@ export default function BookingApp() {
       setAppointments(data);
     } catch {
       setFeedback("We could not load your appointments right now.");
+    }
+  }
+
+  async function loadCurrentUser() {
+    if (!token) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/users/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error("Unable to load account.");
+      }
+
+      const nextUser = (await response.json()) as UserProfile;
+      window.localStorage.setItem(
+        SESSION_STORAGE_KEY,
+        JSON.stringify({ user: nextUser, token }),
+      );
+      setUser(nextUser);
+    } catch {
+      // Keep the saved profile available during a temporary API interruption.
     }
   }
 
@@ -1174,28 +1223,12 @@ export default function BookingApp() {
         setBookingNotificationRecipient(data.notificationRecipient);
       }
 
-      if (data.id && data.dateTime && data.status) {
-        setAppointments((current) =>
-          current.map((appointment) =>
-            appointment.id === data.id
-              ? {
-                  ...appointment,
-                  ...data,
-                  id: data.id,
-                  dateTime: data.dateTime,
-                  status: data.status,
-                }
-              : appointment,
-          ),
-        );
-      }
-
       setFeedback(
         action === "confirm" && data.notificationRecipient
           ? `Appointment confirmed. A confirmation email has been sent to ${data.notificationRecipient}.`
           : `Appointment ${action === "confirm" ? "confirmed" : "cancelled"}.`,
       );
-      void loadAppointments();
+      await loadAppointments();
     } catch (error) {
       setFeedback((error as Error).message);
     } finally {
@@ -1622,6 +1655,7 @@ export default function BookingApp() {
                     <p className="mt-2 text-sm text-muted-foreground">{user.email}</p>
                   </div>
                   <div className="rounded-2xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
+                    <p><span className="font-semibold text-foreground">Customer reference:</span> <span className="font-mono tracking-wide">{user.customerReference || "Loading..."}</span></p>
                     <p><span className="font-semibold text-foreground">Address:</span> {user.address}</p>
                     <p><span className="font-semibold text-foreground">Mobile:</span> {user.mobileNumber}</p>
                   </div>

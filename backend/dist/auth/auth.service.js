@@ -35,10 +35,12 @@ let AuthService = class AuthService {
             throw new HttpException("An account with this email already exists.", HttpStatus.CONFLICT);
         }
         const passwordHash = await argon2.hash(body.password);
+        const customerReference = await this.createCustomerReference();
         let user;
         try {
             user = await this.prisma.user.create({
                 data: {
+                    customerReference,
                     firstName: body.firstName,
                     surname: body.surname,
                     email,
@@ -48,6 +50,7 @@ let AuthService = class AuthService {
                 },
                 select: {
                     id: true,
+                    customerReference: true,
                     firstName: true,
                     surname: true,
                     email: true,
@@ -86,6 +89,7 @@ let AuthService = class AuthService {
         return {
             user: {
                 id: user.id,
+                customerReference: user.customerReference,
                 firstName: user.firstName,
                 surname: user.surname,
                 email: user.email,
@@ -242,6 +246,15 @@ let AuthService = class AuthService {
             success: true,
             message: "Password reset successful.",
         };
+    }
+    async createCustomerReference() {
+        const [sequence] = await this.prisma.$queryRaw `
+      SELECT nextval('"User_customerReference_seq"')::text AS value
+    `;
+        if (!sequence) {
+            throw new HttpException("Unable to create a customer reference.", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return `CUS-${sequence.value.padStart(6, "0")}`;
     }
     async persistRefreshToken(userId, refreshToken) {
         await this.prisma.refreshToken.create({

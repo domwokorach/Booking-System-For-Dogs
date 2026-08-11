@@ -21,20 +21,21 @@ enum AccountDeletionRequestStatus {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  firstName    String
-  surname      String
-  email        String        @unique
-  address      String
-  mobileNumber String
-  passwordHash String
-  appointments Appointment[]
-  reviews      Review[]
-  refreshTokens RefreshToken[]
-  passwordResetTokens PasswordResetToken[]
+  id                     String                  @id @default(uuid())
+  customerReference      String                  @unique
+  firstName              String
+  surname                String
+  email                  String                  @unique
+  address                String
+  mobileNumber           String
+  passwordHash           String
+  appointments           Appointment[]
+  reviews                Review[]
+  refreshTokens          RefreshToken[]
+  passwordResetTokens    PasswordResetToken[]
   accountDeletionRequest AccountDeletionRequest?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
 }
 
 model Service {
@@ -49,24 +50,24 @@ model Service {
 }
 
 model Appointment {
-  id               String            @id @default(uuid())
-  userId           String
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  serviceId        String?
-  serviceRef       Service?          @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  dateTime         DateTime
-  durationMinutes  Int               @default(60)
-  status           AppointmentStatus @default(Pending)
-  service          String?
-  notes            String?
-  confirmedAt      DateTime?
-  cancelledAt      DateTime?
+  id                String                      @id @default(uuid())
+  userId            String
+  user              User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceId         String?
+  serviceRef        Service?                    @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  dateTime          DateTime
+  durationMinutes   Int                         @default(60)
+  status            AppointmentStatus           @default(Pending)
+  service           String?
+  notes             String?
+  confirmedAt       DateTime?
+  cancelledAt       DateTime?
   deleteRequestedAt DateTime?
-  rescheduledFrom  DateTime?
-  deletionRequest  AppointmentDeletionRequest?
+  rescheduledFrom   DateTime?
+  deletionRequest   AppointmentDeletionRequest?
   review            Review?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
 
   @@index([userId])
   @@index([dateTime])
@@ -104,26 +105,26 @@ model AppointmentDeletionRequest {
 }
 
 model PasswordResetToken {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash String   @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId])
   @@index([expiresAt])
 }
 
 model RefreshToken {
-  id         String   @id @default(uuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash  String   @unique
-  expiresAt  DateTime
-  revokedAt  DateTime?
-  createdAt  DateTime @default(now())
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
 
   @@index([userId])
   @@index([expiresAt])

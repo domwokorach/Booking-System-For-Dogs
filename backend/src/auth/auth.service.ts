@@ -40,10 +40,12 @@ export class AuthService {
     }
 
     const passwordHash = await argon2.hash(body.password);
+    const customerReference = await this.createCustomerReference();
     let user;
     try {
       user = await this.prisma.user.create({
         data: {
+          customerReference,
           firstName: body.firstName,
           surname: body.surname,
           email,
@@ -53,6 +55,7 @@ export class AuthService {
         },
         select: {
           id: true,
+          customerReference: true,
           firstName: true,
           surname: true,
           email: true,
@@ -104,6 +107,7 @@ export class AuthService {
     return {
       user: {
         id: user.id,
+        customerReference: user.customerReference,
         firstName: user.firstName,
         surname: user.surname,
         email: user.email,
@@ -309,6 +313,21 @@ export class AuthService {
       success: true,
       message: "Password reset successful.",
     };
+  }
+
+  private async createCustomerReference(): Promise<string> {
+    const [sequence] = await this.prisma.$queryRaw<Array<{ value: string }>>`
+      SELECT nextval('"User_customerReference_seq"')::text AS value
+    `;
+
+    if (!sequence) {
+      throw new HttpException(
+        "Unable to create a customer reference.",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    return `CUS-${sequence.value.padStart(6, "0")}`;
   }
 
   private async persistRefreshToken(

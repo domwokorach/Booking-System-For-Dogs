@@ -106,6 +106,7 @@ let UsersService = class UsersService {
             where: { id: currentUser.id },
             select: {
                 id: true,
+                customerReference: true,
                 firstName: true,
                 surname: true,
                 email: true,
@@ -132,6 +133,7 @@ let UsersService = class UsersService {
                 },
                 select: {
                     id: true,
+                    customerReference: true,
                     firstName: true,
                     surname: true,
                     email: true,

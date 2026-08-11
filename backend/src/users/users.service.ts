@@ -137,6 +137,7 @@ export class UsersService {
       where: { id: currentUser.id },
       select: {
         id: true,
+        customerReference: true,
         firstName: true,
         surname: true,
         email: true,
@@ -166,6 +167,7 @@ export class UsersService {
         },
         select: {
           id: true,
+          customerReference: true,
           firstName: true,
           surname: true,
           email: true,
