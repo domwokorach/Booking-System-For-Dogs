@@ -108,6 +108,11 @@ export class AppointmentsService {
       this.rethrowSlotConflict(error, "This appointment slot is already booked.");
     }
 
+    this.realtime.emitToUser(user.id, "appointments:created", {
+      appointmentId: appointment.id,
+      dateTime: appointment.dateTime,
+      status: appointment.status,
+    });
     await this.email.sendBookingConfirmation({
       to: appointment.user.email,
       firstName: appointment.user.firstName,
@@ -116,12 +121,6 @@ export class AppointmentsService {
       appointmentDateTime: appointment.dateTime,
       status: appointment.status,
     });
-    this.realtime.emitToUser(user.id, "appointments:created", {
-      appointmentId: appointment.id,
-      dateTime: appointment.dateTime,
-      status: appointment.status,
-    });
-
     return {
       ...appointment,
       notificationRecipient: this.email.resolveBookingRecipient(
@@ -172,18 +171,17 @@ export class AppointmentsService {
     } else {
       updated = await this.prisma.$transaction(updateAppointment);
     }
+    this.realtime.emitToUser(user.id, "appointments:updated", {
+      appointmentId: updated.id,
+      dateTime: updated.dateTime,
+      status: updated.status,
+    });
     await this.email.sendBookingUpdate({
       to: updated.user.email,
       firstName: updated.user.firstName,
       appointmentDateTime: updated.dateTime,
       status: updated.status,
     });
-    this.realtime.emitToUser(user.id, "appointments:updated", {
-      appointmentId: updated.id,
-      dateTime: updated.dateTime,
-      status: updated.status,
-    });
-
     return {
       ...updated,
       notificationRecipient: this.email.resolveBookingRecipient(
@@ -242,18 +240,17 @@ export class AppointmentsService {
       this.rethrowSlotConflict(error, "The requested time is not available.");
     }
 
+    this.realtime.emitToUser(user.id, "appointments:rescheduled", {
+      appointmentId: updated.id,
+      dateTime: updated.dateTime,
+      status: updated.status,
+    });
     await this.email.sendBookingUpdate({
       to: updated.user.email,
       firstName: updated.user.firstName,
       appointmentDateTime: updated.dateTime,
       status: updated.status,
     });
-    this.realtime.emitToUser(user.id, "appointments:rescheduled", {
-      appointmentId: updated.id,
-      dateTime: updated.dateTime,
-      status: updated.status,
-    });
-
     return {
       ...updated,
       notificationRecipient: this.email.resolveBookingRecipient(
@@ -295,17 +292,17 @@ export class AppointmentsService {
 
       return this.findOwned(user.id, id, transaction);
     });
+    this.realtime.emitToUser(user.id, "appointments:confirmed", {
+      appointmentId: updated.id,
+      dateTime: updated.dateTime,
+      status: updated.status,
+    });
     await this.email.sendBookingConfirmation({
       to: updated.user.email,
       firstName: updated.user.firstName,
       bookingId: updated.id,
       service: updated.serviceRef?.name ?? updated.service,
       appointmentDateTime: updated.dateTime,
-      status: updated.status,
-    });
-    this.realtime.emitToUser(user.id, "appointments:confirmed", {
-      appointmentId: updated.id,
-      dateTime: updated.dateTime,
       status: updated.status,
     });
     return updated;
@@ -339,17 +336,17 @@ export class AppointmentsService {
 
       return this.findOwned(user.id, id, transaction);
     });
+    this.realtime.emitToUser(user.id, "appointments:cancelled", {
+      appointmentId: updated.id,
+      dateTime: updated.dateTime,
+      status: updated.status,
+    });
     await this.email.sendBookingCancellation({
       to: updated.user.email,
       firstName: updated.user.firstName,
       bookingId: updated.id,
       service: updated.serviceRef?.name ?? updated.service,
       appointmentDateTime: updated.dateTime,
-      status: updated.status,
-    });
-    this.realtime.emitToUser(user.id, "appointments:cancelled", {
-      appointmentId: updated.id,
-      dateTime: updated.dateTime,
       status: updated.status,
     });
     return updated;
@@ -394,6 +391,9 @@ export class AppointmentsService {
       }
     });
 
+    this.realtime.emitToUser(appointment.userId, "appointments:deleted", {
+      appointmentId: appointment.id,
+    });
     await this.email.sendBookingCancellation({
       to: appointment.user.email,
       firstName: appointment.user.firstName,
@@ -402,10 +402,6 @@ export class AppointmentsService {
       appointmentDateTime: appointment.dateTime,
       status: appointment.status,
     });
-    this.realtime.emitToUser(appointment.userId, "appointments:deleted", {
-      appointmentId: appointment.id,
-    });
-
     return {
       success: true,
       appointmentId: appointment.id,
@@ -436,6 +432,11 @@ export class AppointmentsService {
 
       return this.findOwned(user.id, id, transaction);
     });
+    this.realtime.emitToUser(user.id, "appointments:updated", {
+      appointmentId: updated.id,
+      dateTime: updated.dateTime,
+      status: updated.status,
+    });
     const approvalUrl = `${env.FRONTEND_URL.replace(/\/$/, "")}/?deleteAppointmentToken=${rawToken}`;
     const emailDelivered = await this.email.sendDeletionRequest({
       to: updated.user.email,
@@ -445,11 +446,6 @@ export class AppointmentsService {
       appointmentDateTime: updated.dateTime,
       status: updated.status,
       approvalUrl,
-    });
-    this.realtime.emitToUser(user.id, "appointments:updated", {
-      appointmentId: updated.id,
-      dateTime: updated.dateTime,
-      status: updated.status,
     });
     return {
       success: true,

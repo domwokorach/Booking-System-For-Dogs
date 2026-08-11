@@ -245,7 +245,7 @@ function formatNextAppointment(value: string): string {
     minute: "2-digit",
   }).format(appointmentDate);
 
-  return `${date}, ${time}`;
+  return `${date} at ${time}`;
 }
 
 function appointmentBusinessDate(value: string): Date {
@@ -573,6 +573,7 @@ export default function BookingApp() {
       void loadAppointments();
     };
 
+    client.on("server:connected", refreshAppointments);
     client.on("appointments:created", refreshAppointments);
     client.on("appointments:updated", refreshAppointments);
     client.on("appointments:rescheduled", refreshAppointments);
@@ -1760,25 +1761,30 @@ export default function BookingApp() {
                       <Check size={15} className="text-emerald-600" />
                     </div>
                     <div>
-                      <div className="text-[11px] text-muted-foreground">Next appointment</div>
+                      <div className="text-[11px] text-muted-foreground">Next Appointment</div>
                       <div className="text-sm font-semibold text-foreground">
                         {nextAppointment
                           ? formatNextAppointment(nextAppointment.dateTime)
-                          : "Today, 2:00 PM"}
+                          : user
+                            ? "No upcoming appointment"
+                            : "Sign in to view"}
                       </div>
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground flex items-center gap-2">
                     <div
                       className={`w-2 h-2 rounded-full shrink-0 ${
-                        nextAppointmentStatus?.label === "Confirmed"
+                        !nextAppointment
+                          ? "bg-stone-300"
+                          : nextAppointmentStatus?.label === "Confirmed"
                           ? "bg-emerald-400"
                           : nextAppointmentStatus?.label === "Rescheduled"
                             ? "bg-sky-400"
                             : "bg-amber-400"
                       }`}
                     />
-                    {nextAppointmentStatus?.label ?? "Confirmed"} — Bella
+                    {nextAppointmentStatus?.label ??
+                      (user ? "Nothing scheduled" : "Your appointment time will appear here")}
                   </div>
                 </div>
               </div>

@@ -63,6 +63,11 @@ let BookingsService = class BookingsService {
         catch (error) {
             this.rethrowSlotConflict(error);
         }
+        this.realtime.emitToUser(user.id, "appointments:created", {
+            appointmentId: appointment.id,
+            dateTime: appointment.dateTime,
+            status: appointment.status,
+        });
         await this.email.sendBookingConfirmation({
             to: appointment.user.email,
             firstName: appointment.user.firstName,
@@ -70,11 +75,6 @@ let BookingsService = class BookingsService {
             service: appointment.service,
             appointmentDateTime: appointment.dateTime,
             status: toApiStatus(appointment.status),
-        });
-        this.realtime.emitToUser(user.id, "appointments:created", {
-            appointmentId: appointment.id,
-            dateTime: appointment.dateTime,
-            status: appointment.status,
         });
         return toBookingMutationResponse(appointment, "Appointment confirmed successfully");
     }
@@ -148,6 +148,11 @@ let BookingsService = class BookingsService {
             }
             return this.findOwnedWithUser(user.id, id, transaction);
         });
+        this.realtime.emitToUser(user.id, "appointments:confirmed", {
+            appointmentId: updated.id,
+            dateTime: updated.dateTime,
+            status: updated.status,
+        });
         await this.email.sendBookingConfirmation({
             to: updated.user.email,
             firstName: updated.user.firstName,
@@ -155,11 +160,6 @@ let BookingsService = class BookingsService {
             service: updated.service,
             appointmentDateTime: updated.dateTime,
             status: toApiStatus(updated.status),
-        });
-        this.realtime.emitToUser(user.id, "appointments:confirmed", {
-            appointmentId: updated.id,
-            dateTime: updated.dateTime,
-            status: updated.status,
         });
         return toBookingMutationResponse(updated, "Appointment confirmed successfully");
     }
@@ -204,16 +204,16 @@ let BookingsService = class BookingsService {
         catch (error) {
             this.rethrowSlotConflict(error);
         }
+        this.realtime.emitToUser(user.id, "appointments:rescheduled", {
+            appointmentId: updated.id,
+            dateTime: updated.dateTime,
+            status: updated.status,
+        });
         await this.email.sendBookingUpdate({
             to: updated.user.email,
             firstName: updated.user.firstName,
             appointmentDateTime: updated.dateTime,
             status: toApiStatus(updated.status),
-        });
-        this.realtime.emitToUser(user.id, "appointments:rescheduled", {
-            appointmentId: updated.id,
-            dateTime: updated.dateTime,
-            status: updated.status,
         });
         return toBookingMutationResponse(updated, "Appointment rescheduled successfully");
     }
@@ -241,6 +241,11 @@ let BookingsService = class BookingsService {
             }
             return this.findOwnedWithUser(user.id, id, transaction);
         });
+        this.realtime.emitToUser(user.id, "appointments:cancelled", {
+            appointmentId: updated.id,
+            dateTime: updated.dateTime,
+            status: updated.status,
+        });
         await this.email.sendBookingCancellation({
             to: updated.user.email,
             firstName: updated.user.firstName,
@@ -248,11 +253,6 @@ let BookingsService = class BookingsService {
             service: updated.service,
             appointmentDateTime: updated.dateTime,
             status: toApiStatus(updated.status),
-        });
-        this.realtime.emitToUser(user.id, "appointments:cancelled", {
-            appointmentId: updated.id,
-            dateTime: updated.dateTime,
-            status: updated.status,
         });
         return toBookingMutationResponse(updated, "Appointment cancelled successfully");
     }
@@ -276,6 +276,11 @@ let BookingsService = class BookingsService {
             });
             return this.findOwnedWithUser(user.id, id, transaction);
         });
+        this.realtime.emitToUser(user.id, "appointments:updated", {
+            appointmentId: updated.id,
+            dateTime: updated.dateTime,
+            status: updated.status,
+        });
         const approvalUrl = `${env.FRONTEND_URL.replace(/\/$/, "")}/?deleteAppointmentToken=${rawToken}`;
         const emailDelivered = await this.email.sendDeletionRequest({
             to: updated.user.email,
@@ -285,11 +290,6 @@ let BookingsService = class BookingsService {
             appointmentDateTime: updated.dateTime,
             status: toApiStatus(updated.status),
             approvalUrl,
-        });
-        this.realtime.emitToUser(user.id, "appointments:updated", {
-            appointmentId: updated.id,
-            dateTime: updated.dateTime,
-            status: updated.status,
         });
         return {
             success: true,

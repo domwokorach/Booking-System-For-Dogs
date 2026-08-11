@@ -88,17 +88,17 @@ let AppointmentsService = class AppointmentsService {
         catch (error) {
             this.rethrowSlotConflict(error, "This appointment slot is already booked.");
         }
+        this.realtime.emitToUser(user.id, "appointments:created", {
+            appointmentId: appointment.id,
+            dateTime: appointment.dateTime,
+            status: appointment.status,
+        });
         await this.email.sendBookingConfirmation({
             to: appointment.user.email,
             firstName: appointment.user.firstName,
             bookingId: appointment.id,
             service: appointment.serviceRef?.name ?? appointment.service,
             appointmentDateTime: appointment.dateTime,
-            status: appointment.status,
-        });
-        this.realtime.emitToUser(user.id, "appointments:created", {
-            appointmentId: appointment.id,
-            dateTime: appointment.dateTime,
             status: appointment.status,
         });
         return {
@@ -142,15 +142,15 @@ let AppointmentsService = class AppointmentsService {
         else {
             updated = await this.prisma.$transaction(updateAppointment);
         }
+        this.realtime.emitToUser(user.id, "appointments:updated", {
+            appointmentId: updated.id,
+            dateTime: updated.dateTime,
+            status: updated.status,
+        });
         await this.email.sendBookingUpdate({
             to: updated.user.email,
             firstName: updated.user.firstName,
             appointmentDateTime: updated.dateTime,
-            status: updated.status,
-        });
-        this.realtime.emitToUser(user.id, "appointments:updated", {
-            appointmentId: updated.id,
-            dateTime: updated.dateTime,
             status: updated.status,
         });
         return {
@@ -195,15 +195,15 @@ let AppointmentsService = class AppointmentsService {
         catch (error) {
             this.rethrowSlotConflict(error, "The requested time is not available.");
         }
+        this.realtime.emitToUser(user.id, "appointments:rescheduled", {
+            appointmentId: updated.id,
+            dateTime: updated.dateTime,
+            status: updated.status,
+        });
         await this.email.sendBookingUpdate({
             to: updated.user.email,
             firstName: updated.user.firstName,
             appointmentDateTime: updated.dateTime,
-            status: updated.status,
-        });
-        this.realtime.emitToUser(user.id, "appointments:rescheduled", {
-            appointmentId: updated.id,
-            dateTime: updated.dateTime,
             status: updated.status,
         });
         return {
@@ -238,17 +238,17 @@ let AppointmentsService = class AppointmentsService {
             }
             return this.findOwned(user.id, id, transaction);
         });
+        this.realtime.emitToUser(user.id, "appointments:confirmed", {
+            appointmentId: updated.id,
+            dateTime: updated.dateTime,
+            status: updated.status,
+        });
         await this.email.sendBookingConfirmation({
             to: updated.user.email,
             firstName: updated.user.firstName,
             bookingId: updated.id,
             service: updated.serviceRef?.name ?? updated.service,
             appointmentDateTime: updated.dateTime,
-            status: updated.status,
-        });
-        this.realtime.emitToUser(user.id, "appointments:confirmed", {
-            appointmentId: updated.id,
-            dateTime: updated.dateTime,
             status: updated.status,
         });
         return updated;
@@ -277,17 +277,17 @@ let AppointmentsService = class AppointmentsService {
             }
             return this.findOwned(user.id, id, transaction);
         });
+        this.realtime.emitToUser(user.id, "appointments:cancelled", {
+            appointmentId: updated.id,
+            dateTime: updated.dateTime,
+            status: updated.status,
+        });
         await this.email.sendBookingCancellation({
             to: updated.user.email,
             firstName: updated.user.firstName,
             bookingId: updated.id,
             service: updated.serviceRef?.name ?? updated.service,
             appointmentDateTime: updated.dateTime,
-            status: updated.status,
-        });
-        this.realtime.emitToUser(user.id, "appointments:cancelled", {
-            appointmentId: updated.id,
-            dateTime: updated.dateTime,
             status: updated.status,
         });
         return updated;
@@ -323,6 +323,9 @@ let AppointmentsService = class AppointmentsService {
                 throw new ConflictException("The deletion request is no longer valid.");
             }
         });
+        this.realtime.emitToUser(appointment.userId, "appointments:deleted", {
+            appointmentId: appointment.id,
+        });
         await this.email.sendBookingCancellation({
             to: appointment.user.email,
             firstName: appointment.user.firstName,
@@ -330,9 +333,6 @@ let AppointmentsService = class AppointmentsService {
             service: appointment.serviceRef?.name ?? appointment.service,
             appointmentDateTime: appointment.dateTime,
             status: appointment.status,
-        });
-        this.realtime.emitToUser(appointment.userId, "appointments:deleted", {
-            appointmentId: appointment.id,
         });
         return {
             success: true,
@@ -360,6 +360,11 @@ let AppointmentsService = class AppointmentsService {
             });
             return this.findOwned(user.id, id, transaction);
         });
+        this.realtime.emitToUser(user.id, "appointments:updated", {
+            appointmentId: updated.id,
+            dateTime: updated.dateTime,
+            status: updated.status,
+        });
         const approvalUrl = `${env.FRONTEND_URL.replace(/\/$/, "")}/?deleteAppointmentToken=${rawToken}`;
         const emailDelivered = await this.email.sendDeletionRequest({
             to: updated.user.email,
@@ -369,11 +374,6 @@ let AppointmentsService = class AppointmentsService {
             appointmentDateTime: updated.dateTime,
             status: updated.status,
             approvalUrl,
-        });
-        this.realtime.emitToUser(user.id, "appointments:updated", {
-            appointmentId: updated.id,
-            dateTime: updated.dateTime,
-            status: updated.status,
         });
         return {
             success: true,

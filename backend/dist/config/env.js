@@ -22,7 +22,7 @@ const rawEnvSchema = z.object({
     EMAIL_FROM: z.string().min(1).default("Pawside <onboarding@resend.dev>"),
     BOOKING_EMAIL_TO: z
         .union([z.string().email(), z.literal("")])
-        .default("dominicolanya@gmail.com"),
+        .default("dominic.olanya@gmail.com"),
     STORAGE_PROVIDER: z.enum(["s3", "gcs"]).default("s3"),
     AWS_REGION: z.string().default("us-east-1"),
     AWS_S3_BUCKET: z.string().default(""),
