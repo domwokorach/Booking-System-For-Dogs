@@ -30,6 +30,15 @@ export class PaymentsController {
     return this.payments.handleWebhook(request.rawBody, signature);
   }
 
+  @Post("checkout/:bookingId")
+  @UseGuards(JwtAuthGuard)
+  createCheckout(
+    @CurrentUser() user: AuthUser,
+    @Param("bookingId") bookingId: string,
+  ) {
+    return this.payments.createCheckoutForAppointment(user, bookingId);
+  }
+
   @Get("session/:sessionId")
   @UseGuards(JwtAuthGuard)
   getSessionStatus(

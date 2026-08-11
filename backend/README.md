@@ -140,6 +140,38 @@ The Vite frontend runs on `http://localhost:5173`. In development, `/api`
 requests are proxied to port 4000, while Socket.IO connects directly to port
 4000.
 
+## Stripe Checkout
+
+Checkout prices are loaded from the `Service.pricePence` column by NestJS. The
+frontend never supplies an amount and never receives or stores card details.
+Add Stripe test credentials to `backend/.env`:
+
+```env
+STRIPE_SECRET_KEY="sk_test_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
+STRIPE_CURRENCY="gbp"
+FRONTEND_URL="http://localhost:5173"
+```
+
+For local webhook delivery, run the Stripe CLI in a separate terminal and copy
+the displayed `whsec_...` signing secret into `STRIPE_WEBHOOK_SECRET`:
+
+```bash
+stripe listen --forward-to localhost:4000/api/payments/webhook
+```
+
+An authenticated customer starts or resumes Checkout with
+`POST /api/payments/checkout/:bookingId`. Stripe redirects back to the frontend,
+but that return page is informational only: only a signature-verified Stripe
+webhook changes the payment to `PAID` and the appointment to `CONFIRMED`. The
+confirmation email is sent after that database transaction succeeds.
+
+Apply the committed payment migrations before testing:
+
+```bash
+pnpm --dir backend run prisma:migrate
+```
+
 ## Prisma commands
 
 Run these from the repository root:

@@ -62,6 +62,16 @@ function formatService(service) {
     }
     return SERVICE_LABELS[service] ?? service;
 }
+function formatPayment(data) {
+    if (data.amountPence === undefined || !data.currency) {
+        return "";
+    }
+    const amount = new Intl.NumberFormat("en-GB", {
+        style: "currency",
+        currency: data.currency.toUpperCase(),
+    }).format(data.amountPence / 100);
+    return `\nPayment: ${amount}\nPayment status: ${data.paymentStatus ?? "PAID"}`;
+}
 function escapeHtml(value) {
     return value
         .replaceAll("&", "&amp;")
@@ -81,7 +91,7 @@ export async function sendBookingConfirmationEmail(data) {
         from: env.EMAIL_FROM,
         to: recipient,
         subject: "Booking confirmed",
-        text: `Hi ${data.firstName},\n\nYour appointment has been confirmed.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nSelected service: ${formatService(data.service)}\nAppointment date: ${formatDate(data.appointmentDateTime)}\nAppointment time: ${formatTime(data.appointmentDateTime)}\nBooking status: ${data.status}\n\nWe look forward to seeing you.`,
+        text: `Hi ${data.firstName},\n\nYour appointment has been confirmed.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nSelected service: ${formatService(data.service)}\nAppointment date: ${formatDate(data.appointmentDateTime)}\nAppointment time: ${formatTime(data.appointmentDateTime)}${formatPayment(data)}\nBooking status: ${data.status}\n\nWe look forward to seeing you.`,
     })));
     // The registered customer is always first; optional administrator copies do
     // not determine whether customer delivery succeeded.

@@ -22,6 +22,9 @@ let PaymentsController = class PaymentsController {
     webhook(request, signature) {
         return this.payments.handleWebhook(request.rawBody, signature);
     }
+    createCheckout(user, bookingId) {
+        return this.payments.createCheckoutForAppointment(user, bookingId);
+    }
     getSessionStatus(user, sessionId) {
         return this.payments.getSessionStatus(user, sessionId);
     }
@@ -38,6 +41,15 @@ __decorate([
     __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", void 0)
 ], PaymentsController.prototype, "webhook", null);
+__decorate([
+    Post("checkout/:bookingId"),
+    UseGuards(JwtAuthGuard),
+    __param(0, CurrentUser()),
+    __param(1, Param("bookingId")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", void 0)
+], PaymentsController.prototype, "createCheckout", null);
 __decorate([
     Get("session/:sessionId"),
     UseGuards(JwtAuthGuard),

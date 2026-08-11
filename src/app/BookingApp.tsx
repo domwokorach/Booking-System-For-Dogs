@@ -612,12 +612,15 @@ export default function BookingApp() {
               headers: { Authorization: `Bearer ${token}` },
             },
           );
+          const data = (await response.json()) as { message?: string };
           if (!response.ok) {
-            const data = (await response.json()) as { message?: string };
             throw new Error(data.message || "Unable to cancel the pending payment.");
           }
           if (active) {
-            setFeedback("Payment was cancelled. The appointment was not confirmed.");
+            setFeedback(
+              data.message ||
+                "Payment was cancelled. The appointment was not confirmed.",
+            );
           }
         }
         if (active) {
@@ -1305,8 +1308,17 @@ export default function BookingApp() {
     }
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/appointments/${appointmentId}/${action}`, {
-        method: "PATCH",
+      const requiresPayment =
+        action === "confirm" &&
+        appointments
+          .find((appointment) => appointment.id === appointmentId)
+          ?.status.toLowerCase() === "pending";
+      const endpoint =
+        requiresPayment
+          ? `${API_BASE}/api/payments/checkout/${appointmentId}`
+          : `${API_BASE}/api/appointments/${appointmentId}/${action}`;
+      const response = await fetch(endpoint, {
+        method: requiresPayment ? "POST" : "PATCH",
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = (await response.json()) as AppointmentMutationResponse;

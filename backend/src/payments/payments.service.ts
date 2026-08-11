@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -47,7 +48,6 @@ export class PaymentsService {
         userId: input.userId,
         status: PaymentStatus.Pending,
         stripeCheckoutSessionId: { not: null },
-        checkoutExpiresAt: { gt: new Date() },
       },
       orderBy: { createdAt: "desc" },
     });
@@ -58,6 +58,23 @@ export class PaymentsService {
       );
       if (existingSession.status === "open" && existingSession.url) {
         return this.checkoutResponse(existingSession);
+      }
+      if (
+        existingSession.status === "complete" ||
+        existingSession.payment_status !== "unpaid"
+      ) {
+        throw new ConflictException(
+          "Stripe is already processing this payment. Please wait for confirmation.",
+        );
+      }
+      if (existingSession.status === "expired") {
+        await this.prisma.payment.updateMany({
+          where: {
+            id: existingPayment.id,
+            status: PaymentStatus.Pending,
+          },
+          data: { status: PaymentStatus.Expired, failedAt: new Date() },
+        });
       }
     }
 
@@ -130,6 +147,39 @@ export class PaymentsService {
     }
   }
 
+  async createCheckoutForAppointment(user: AuthUser, appointmentId: string) {
+    const appointment = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, userId: user.id },
+      include: { user: true, serviceRef: true },
+    });
+    if (!appointment) {
+      throw new NotFoundException("Appointment not found.");
+    }
+    if (appointment.status !== AppointmentStatus.Pending) {
+      throw new BadRequestException(
+        appointment.status === AppointmentStatus.Confirmed
+          ? "This appointment is already confirmed."
+          : "Only pending appointments can be paid.",
+      );
+    }
+    if (!appointment.serviceRef) {
+      throw new BadRequestException(
+        "This appointment does not have a payable service.",
+      );
+    }
+
+    return this.createCheckout({
+      appointmentId: appointment.id,
+      userId: appointment.userId,
+      customerEmail: appointment.user.email,
+      customerName: `${appointment.user.firstName} ${appointment.user.surname}`,
+      serviceId: appointment.serviceRef.id,
+      serviceName: appointment.serviceRef.name,
+      amountPence: appointment.serviceRef.pricePence,
+      appointmentDateTime: appointment.dateTime,
+    });
+  }
+
   async handleWebhook(rawBody: Buffer | undefined, signature?: string) {
     const stripe = this.requireStripe();
     const webhookSecret = env.STRIPE_WEBHOOK_SECRET.trim();
@@ -171,14 +221,7 @@ export class PaymentsService {
   }
 
   async getSessionStatus(user: AuthUser, sessionId: string) {
-    let payment = await this.findOwnedPayment(user.id, sessionId);
-    if (payment.status === PaymentStatus.Pending && this.stripe) {
-      const session = await this.stripe.checkout.sessions.retrieve(sessionId);
-      if (session.payment_status !== "unpaid") {
-        await this.fulfillPaidSession(session);
-        payment = await this.findOwnedPayment(user.id, sessionId);
-      }
-    }
+    const payment = await this.findOwnedPayment(user.id, sessionId);
 
     return {
       paymentStatus: payment.status.toUpperCase(),
@@ -208,10 +251,10 @@ export class PaymentsService {
         payment.stripeCheckoutSessionId,
       );
       if (session.payment_status !== "unpaid") {
-        await this.fulfillPaidSession(session);
         return {
           success: true,
-          message: "Payment succeeded and the appointment is confirmed.",
+          message:
+            "Payment succeeded. Stripe webhook confirmation is being processed.",
         };
       }
       if (session.status === "open") {
@@ -254,10 +297,6 @@ export class PaymentsService {
           failedAt: null,
         },
       });
-      if (claimed.count !== 1) {
-        return null;
-      }
-
       const confirmed = await transaction.appointment.updateMany({
         where: {
           id: payment.appointmentId,
@@ -269,31 +308,40 @@ export class PaymentsService {
           confirmedAt: new Date(),
         },
       });
-      if (confirmed.count !== 1) {
+      if (claimed.count === 0 && confirmed.count === 0) {
         return null;
       }
 
-      return transaction.appointment.findUnique({
+      const appointment = await transaction.appointment.findUnique({
         where: { id: payment.appointmentId },
         include: { user: true, serviceRef: true },
       });
+      if (!appointment) {
+        throw new BadRequestException("Appointment not found for payment.");
+      }
+
+      return { appointment, shouldNotify: confirmed.count === 1 };
     });
 
-    if (!result) {
+    if (!result?.shouldNotify) {
       return;
     }
-    this.realtime.emitToUser(result.userId, "appointments:confirmed", {
-      appointmentId: result.id,
-      dateTime: result.dateTime,
-      status: result.status,
+    const { appointment } = result;
+    this.realtime.emitToUser(appointment.userId, "appointments:confirmed", {
+      appointmentId: appointment.id,
+      dateTime: appointment.dateTime,
+      status: appointment.status,
     });
     await this.email.sendBookingConfirmation({
-      to: result.user.email,
-      firstName: result.user.firstName,
-      bookingId: result.id,
-      service: result.serviceRef?.name ?? result.service,
-      appointmentDateTime: result.dateTime,
-      status: result.status,
+      to: appointment.user.email,
+      firstName: appointment.user.firstName,
+      bookingId: appointment.id,
+      service: appointment.serviceRef?.name ?? appointment.service,
+      appointmentDateTime: appointment.dateTime,
+      status: appointment.status,
+      amountPence: payment.amountPence,
+      currency: payment.currency,
+      paymentStatus: PaymentStatus.Paid.toUpperCase(),
     });
   }
 
@@ -320,10 +368,25 @@ export class PaymentsService {
     status: PaymentStatus,
   ) {
     const cancelled = await this.prisma.$transaction(async (transaction) => {
-      await transaction.payment.updateMany({
+      const changedPayment = await transaction.payment.updateMany({
         where: { id: paymentId, status: PaymentStatus.Pending },
         data: { status, failedAt: new Date() },
       });
+      if (changedPayment.count !== 1) {
+        return { count: 0 };
+      }
+
+      const replacementPayment = await transaction.payment.count({
+        where: {
+          appointmentId,
+          id: { not: paymentId },
+          status: { in: [PaymentStatus.Pending, PaymentStatus.Paid] },
+        },
+      });
+      if (replacementPayment > 0) {
+        return { count: 0 };
+      }
+
       return transaction.appointment.updateMany({
         where: { id: appointmentId, status: AppointmentStatus.Pending },
         data: { status: AppointmentStatus.Cancelled, cancelledAt: new Date() },

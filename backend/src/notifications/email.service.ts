@@ -16,6 +16,9 @@ export type BookingEmailData = {
   status: string;
   bookingId?: string;
   service?: string | null;
+  amountPence?: number;
+  currency?: string;
+  paymentStatus?: string;
 };
 
 export type AccountDeletionRequestEmailData = {

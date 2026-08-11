@@ -21,10 +21,11 @@ enum AccountDeletionRequestStatus {
 }
 
 enum PaymentStatus {
-  Pending @map("PENDING")
-  Paid    @map("PAID")
-  Failed  @map("FAILED")
-  Expired @map("EXPIRED")
+  Pending  @map("PENDING")
+  Paid     @map("PAID")
+  Failed   @map("FAILED")
+  Expired  @map("EXPIRED")
+  Refunded @map("REFUNDED")
 }
 
 model User {
