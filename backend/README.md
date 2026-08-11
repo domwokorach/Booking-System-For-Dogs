@@ -310,13 +310,13 @@ Docker and Render use the same sequence. The server listens on `0.0.0.0` and
 the configured `PORT`, which remains 3000 locally but can be supplied by the
 hosting platform.
 
-`api/[...route].ts` is a cached NestJS adapter for HTTP-only serverless
-deployments. Use a PostgreSQL transaction-pooler URL (or a conservative Prisma
-`connection_limit`) there because every serverless isolate can own a database
-connection pool.
+Vercel detects `src/main.ts` directly and deploys the NestJS application as one
+Function. Use a PostgreSQL transaction-pooler URL because each scaled Function
+instance can own database connections. See `../VERCEL_DEPLOYMENT.md` for the
+two-project deployment checklist.
 
 For realtime appointment updates, send both HTTP and Socket.IO traffic to the
-same long-running Docker or Render service:
+same backend origin:
 
 ```env
 VITE_API_URL="https://your-backend.example.com"
@@ -324,6 +324,6 @@ VITE_SOCKET_URL="https://your-backend.example.com"
 VITE_BUSINESS_TIME_ZONE="Europe/London"
 ```
 
-Do not send HTTP mutations to the serverless function while Socket.IO clients
-are connected to a different process; in-memory events cannot cross that
-deployment boundary without a shared broker such as Redis.
+When Vercel scales the backend to multiple Function instances, in-memory events
+cannot cross instance boundaries. Add a shared broker such as Redis before
+depending on Socket.IO delivery across instances.

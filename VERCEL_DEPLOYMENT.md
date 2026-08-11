@@ -1,0 +1,118 @@
+# Vercel deployment
+
+Deploy this repository as two Vercel projects connected to the same GitHub
+repository:
+
+| Vercel project | Root directory | Framework |
+| --- | --- | --- |
+| Pawside frontend | `.` | Vite |
+| Pawside backend | `backend` | NestJS |
+
+The frontend lives at the repository root; it does not need to be moved into a
+new `frontend/` directory. Vercel reads the root `vercel.json` for Vite SPA
+fallback routing and `backend/vercel.json` for the NestJS project.
+
+## 1. Create production PostgreSQL
+
+Create a managed PostgreSQL database through the Vercel Marketplace (for
+example Prisma Postgres or Neon) and connect it only to the backend project.
+Use its pooled production connection string as `DATABASE_URL`. Never use a
+`localhost` database URL in Vercel.
+
+Apply the committed Prisma migrations before serving production traffic:
+
+```bash
+npm --prefix backend run prisma:migrate:deploy
+```
+
+Run this from CI/CD with the production `DATABASE_URL`. The backend's
+`postinstall` script generates Prisma Client during every deployment.
+
+## 2. Deploy the backend
+
+Import the GitHub repository into Vercel and set its Root Directory to
+`backend`. Vercel detects `src/main.ts` and deploys the NestJS application as a
+Function.
+
+Configure these backend environment variables for Production (and suitable
+Preview values if preview deployments should connect to external services):
+
+```env
+NODE_ENV=production
+DATABASE_URL=postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require
+
+CLIENT_ORIGIN=https://YOUR-FRONTEND.vercel.app
+FRONTEND_URL=https://YOUR-FRONTEND.vercel.app
+BUSINESS_TIME_ZONE=Europe/London
+
+JWT_ACCESS_SECRET=GENERATE_A_LONG_RANDOM_SECRET
+JWT_REFRESH_SECRET=GENERATE_A_DIFFERENT_LONG_RANDOM_SECRET
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+
+RESEND_API_KEY=re_...
+EMAIL_FROM=Pawside <appointments@yourdomain.com>
+BOOKING_EMAIL_TO=your-admin@example.com
+
+STRIPE_SECRET_KEY=sk_live_or_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_CURRENCY=gbp
+```
+
+Also configure the storage variables required by the selected `STORAGE_PROVIDER`.
+Do not upload or commit a real `.env` file.
+
+After deployment, verify:
+
+```text
+https://YOUR-BACKEND.vercel.app/health
+```
+
+## 3. Deploy the frontend
+
+Import the same GitHub repository a second time. Keep the Root Directory as
+`.` and select Vite.
+
+Configure these build-time environment variables:
+
+```env
+VITE_API_URL=https://YOUR-BACKEND.vercel.app
+VITE_SOCKET_URL=https://YOUR-BACKEND.vercel.app
+VITE_BUSINESS_TIME_ZONE=Europe/London
+```
+
+The frontend already reads `VITE_API_URL`; no production API URL is hard-coded.
+After the final frontend URL is known, set that exact origin in both
+`CLIENT_ORIGIN` and `FRONTEND_URL` on the backend, then redeploy the backend.
+
+## 4. Configure Stripe
+
+Create a production webhook endpoint in Stripe:
+
+```text
+https://YOUR-BACKEND.vercel.app/api/payments/webhook
+```
+
+Subscribe it to:
+
+```text
+checkout.session.completed
+checkout.session.async_payment_succeeded
+checkout.session.async_payment_failed
+checkout.session.expired
+refund.created
+refund.updated
+refund.failed
+```
+
+Copy that endpoint's signing secret into the backend project's
+`STRIPE_WEBHOOK_SECRET`, then redeploy. Test the full Checkout and refund flows
+against the deployed webhook before changing from Stripe test keys to live keys.
+
+## 5. Realtime behavior
+
+Socket.IO clients use `VITE_SOCKET_URL` and reconnect automatically. Vercel
+WebSocket connections are tied to one Function instance for their lifetime and
+are still subject to Function duration limits. If the backend scales across
+instances, add a shared Redis-compatible Socket.IO adapter so appointment
+events can reach clients connected to other instances.

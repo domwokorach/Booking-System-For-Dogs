@@ -4,6 +4,9 @@ A secure appointment booking application built with **Node.js, NestJS, Prisma OR
 
 Users can create an account, sign in, choose a service, select an available appointment date and time, confirm a booking, reschedule or cancel appointments, and receive email notifications.
 
+For production, deploy the Vite frontend and NestJS backend as separate Vercel
+projects using the checklist in [`VERCEL_DEPLOYMENT.md`](./VERCEL_DEPLOYMENT.md).
+
 ## Technology Stack
 
 - Node.js
