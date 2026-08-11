@@ -8,7 +8,6 @@ import {
   Home,
   Phone,
   MapPin,
-  Star,
   X,
   Check,
   Menu,
@@ -105,33 +104,6 @@ const TIME_SLOTS = [
   "3:00 PM",
   "4:00 PM",
   "5:00 PM",
-];
-
-const TESTIMONIALS = [
-  {
-    name: "Sarah Chen",
-    dog: "Mochi — Golden Retriever",
-    text: "Pawside transformed our entire routine. Mochi comes back from daycare genuinely tired and happy every single time. The staff clearly love what they do.",
-    stars: 5,
-    photo:
-      "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=80&h=80&fit=crop&auto=format",
-  },
-  {
-    name: "Marcus Williams",
-    dog: "Biscuit — French Bulldog",
-    text: "The grooming is exceptional. Biscuit looks immaculate every visit. Online booking is effortless and they always confirm same-day. Cannot recommend enough.",
-    stars: 5,
-    photo:
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=80&fit=crop&auto=format",
-  },
-  {
-    name: "Elena Rossi",
-    dog: "Luna — Border Collie",
-    text: "Three sessions in and Luna heels perfectly on a loose lead. The trainer really understands how herding breeds think. Worth every penny.",
-    stars: 5,
-    photo:
-      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&h=80&fit=crop&auto=format",
-  },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -281,7 +253,7 @@ export default function App() {
         {/* Left: dark forest panel */}
         <div className="bg-[#1B2B1B] flex flex-col justify-center px-10 md:px-16 py-24 order-2 md:order-1">
           <p className="text-[#5A8B60] text-xs font-semibold tracking-[0.2em] uppercase mb-6">
-            Portland, Oregon
+            Essex, UK
           </p>
           <h1 className="text-white text-5xl md:text-6xl lg:text-[4.5rem] font-bold font-serif leading-[1.05] mb-8">
             Expert care for your best friend.
@@ -792,50 +764,19 @@ export default function App() {
         </div>
       </section>
 
-      {/* ── Testimonials ── */}
+      {/* ── Reviews ── */}
       <section id="about" className="py-24 px-6 bg-[#1B2B1B]">
         <div className="max-w-6xl mx-auto">
           <div className="mb-14">
             <p className="text-[#5A8B60] text-xs font-semibold tracking-[0.18em] uppercase mb-4">
-              What owners say
+              Real customer feedback
             </p>
             <h2 className="text-4xl md:text-5xl font-bold font-serif text-white leading-tight">
-              {"Dogs don't lie about happiness"}
+              Reviews from Pawside customers
             </h2>
           </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {TESTIMONIALS.map((t) => (
-              <div
-                key={t.name}
-                className="bg-white/[0.05] border border-white/10 rounded-2xl p-7 flex flex-col hover:bg-white/[0.08] transition-colors"
-              >
-                <div className="flex items-center gap-0.5 mb-5">
-                  {Array.from({ length: t.stars }).map((_, i) => (
-                    <Star
-                      key={i}
-                      size={13}
-                      className="text-amber-400 fill-amber-400"
-                    />
-                  ))}
-                </div>
-                <blockquote className="text-[#B8CEB9] text-sm leading-relaxed flex-1 mb-7">
-                  &ldquo;{t.text}&rdquo;
-                </blockquote>
-                <div className="flex items-center gap-3">
-                  <img
-                    src={t.photo}
-                    alt={t.name}
-                    className="w-10 h-10 rounded-full object-cover bg-[#2A3D2A] shrink-0"
-                  />
-                  <div>
-                    <div className="text-white text-sm font-semibold">
-                      {t.name}
-                    </div>
-                    <div className="text-[#6A9B6C] text-xs mt-0.5">{t.dog}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-8 text-sm text-[#B8CEB9]">
+            No genuine customer reviews have been submitted yet.
           </div>
         </div>
       </section>
@@ -852,7 +793,7 @@ export default function App() {
                 <span className="font-bold text-lg font-serif">Pawside</span>
               </div>
               <p className="text-muted-foreground text-sm leading-relaxed max-w-xs">
-                Professional dog grooming, training, daycare, and boarding in the heart of Portland, Oregon.
+                Professional dog grooming, training, daycare, and boarding in Essex, UK.
               </p>
             </div>
             <div>
@@ -875,7 +816,7 @@ export default function App() {
               <ul className="space-y-2.5 text-sm text-muted-foreground">
                 <li className="flex items-start gap-2">
                   <MapPin size={14} className="mt-0.5 shrink-0" />
-                  2847 NW Thurman St, Portland OR
+                  Essex, UK
                 </li>
                 <li className="flex items-center gap-2">
                   <Phone size={14} className="shrink-0" />

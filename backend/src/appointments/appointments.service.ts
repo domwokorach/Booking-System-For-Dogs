@@ -13,6 +13,7 @@ import { env } from "../config/env.js";
 import { EmailService } from "../notifications/email.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { RealtimeGateway } from "../realtime/realtime.gateway.js";
+import { getReviewEligibility } from "../reviews/review-eligibility.js";
 import { AppointmentSlotsService } from "../scheduling/appointment-slots.service.js";
 import type {
   CreateAppointmentInput,
@@ -50,11 +51,22 @@ export class AppointmentsService {
     };
   }
 
-  listMine(user: AuthUser) {
-    return this.prisma.appointment.findMany({
+  async listMine(user: AuthUser) {
+    const appointments = await this.prisma.appointment.findMany({
       where: { userId: user.id },
+      include: { review: { select: { id: true } } },
       orderBy: { dateTime: "asc" },
     });
+
+    return appointments.map((appointment) => ({
+      ...appointment,
+      reviewEligibility: getReviewEligibility({
+        status: appointment.status,
+        dateTime: appointment.dateTime,
+        durationMinutes: appointment.durationMinutes,
+        hasReview: Boolean(appointment.review),
+      }),
+    }));
   }
 
   async availableForReschedule(user: AuthUser, id: string, date: string) {

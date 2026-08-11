@@ -46,6 +46,7 @@ The main application modules live under `src/`:
 - `bookings/` and `appointments/` handle booking lifecycle operations.
 - `catalog/` and `slots/` expose services and available appointment times.
 - `files/`, `storage/`, and `notifications/` handle uploads and email workflows.
+- `reviews/` validates and publishes feedback from customers with completed appointments.
 - `realtime/` publishes authenticated appointment updates over Socket.IO.
 - `prisma/` owns the injectable Prisma client and its application lifecycle.
 
@@ -71,12 +72,19 @@ PATCH /api/appointments/:id/reschedule
 GET  /api/appointments/:id/slots
 POST /api/appointments/:id/delete-request
 POST /api/appointments/delete/confirm
+GET  /api/reviews
+POST /api/reviews
 POST /api/users/me/delete-request
 ```
 
 Appointment deletion requests generate a random approval token and email the
 administrator a frontend review link. PostgreSQL stores only the token hash;
 approval is single-use and expires after 30 minutes.
+
+`GET /api/reviews` is public. `POST /api/reviews` requires a valid customer
+access token and accepts one review per owned appointment after its scheduled
+duration has elapsed. Customer names and IDs are taken from the authenticated
+database records, not from client-supplied identity fields.
 
 Socket.IO uses the same backend server and port. Clients authenticate with an
 access token in `handshake.auth.token` and receive appointment events in their

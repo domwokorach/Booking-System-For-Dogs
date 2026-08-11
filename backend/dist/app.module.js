@@ -14,6 +14,7 @@ import { FilesModule } from "./files/files.module.js";
 import { NotificationsModule } from "./notifications/notifications.module.js";
 import { PrismaModule } from "./prisma/prisma.module.js";
 import { RealtimeModule } from "./realtime/realtime.module.js";
+import { ReviewsModule } from "./reviews/reviews.module.js";
 import { SchedulingModule } from "./scheduling/scheduling.module.js";
 import { SlotsModule } from "./slots/slots.module.js";
 import { UsersModule } from "./users/users.module.js";
@@ -27,6 +28,7 @@ AppModule = __decorate([
             SchedulingModule,
             AuthModule,
             RealtimeModule,
+            ReviewsModule,
             UsersModule,
             ServicesModule,
             SlotsModule,

@@ -23,6 +23,7 @@ let AppController = class AppController {
                 slots: "/api/slots",
                 users: "/api/users",
                 files: "/api/files",
+                reviews: "/api/reviews",
             },
         };
     }

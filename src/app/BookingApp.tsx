@@ -68,12 +68,31 @@ interface AppointmentRecord {
   id: string;
   serviceId?: string | null;
   dateTime: string;
+  durationMinutes?: number;
   status: string;
   service?: string | null;
   notes?: string | null;
   deleteRequestedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  review?: { id: string } | null;
+  reviewEligibility?: {
+    canReview: boolean;
+    reason: "AVAILABLE" | "ALREADY_REVIEWED" | "CANCELLED" | "NOT_FINISHED";
+    availableAt: string | null;
+  };
+}
+
+interface ReviewRecord {
+  id: string;
+  customerId: string;
+  customerName: string;
+  avatarUrl: string;
+  rating: number;
+  comment: string;
+  petName: string;
+  petBreed: string;
+  createdAt: string;
 }
 
 interface AppointmentMutationResponse {
@@ -166,29 +185,12 @@ const SERVICES = [
   },
 ];
 
-const TESTIMONIALS = [
-  {
-    name: "Sarah Chen",
-    dog: "Mochi — Golden Retriever",
-    text: "Pawside transformed our entire routine. Mochi comes back from daycare genuinely tired and happy every single time. The staff clearly love what they do.",
-    stars: 5,
-    photo: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=80&h=80&fit=crop&auto=format",
-  },
-  {
-    name: "Marcus Williams",
-    dog: "Biscuit — French Bulldog",
-    text: "The grooming is exceptional. Biscuit looks immaculate every visit. Online booking is effortless and they always confirm same-day. Cannot recommend enough.",
-    stars: 5,
-    photo: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=80&fit=crop&auto=format",
-  },
-  {
-    name: "Elena Rossi",
-    dog: "Luna — Border Collie",
-    text: "Three sessions in and Luna heels perfectly on a loose lead. The trainer really understands how herding breeds think. Worth every penny.",
-    stars: 5,
-    photo: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&h=80&fit=crop&auto=format",
-  },
-];
+const EMPTY_REVIEW_FORM = {
+  rating: 5,
+  comment: "",
+  petName: "",
+  petBreed: "",
+};
 
 function buildCalendarDays(month: Date): Date[] {
   const days: Date[] = [];
@@ -211,6 +213,48 @@ function formatAppointmentDate(value: string): string {
     timeStyle: "short",
     timeZone: BUSINESS_TIME_ZONE,
   }).format(new Date(value));
+}
+
+function formatReviewDate(value: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeZone: BUSINESS_TIME_ZONE,
+  }).format(new Date(value));
+}
+
+function resolveAvatarUrl(value: string): string {
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+
+  const assetBase = API_BASE || SOCKET_BASE;
+  return `${assetBase.replace(/\/$/, "")}${value.startsWith("/") ? value : `/${value}`}`;
+}
+
+function canReviewAppointment(appointment: AppointmentRecord): boolean {
+  const status = appointment.status.toLowerCase();
+  if (status !== "confirmed" && status !== "rescheduled") {
+    return false;
+  }
+
+  const appointmentEndsAt =
+    new Date(appointment.dateTime).getTime() +
+    (appointment.durationMinutes ?? 60) * 60_000;
+  return appointmentEndsAt <= Date.now();
+}
+
+function reviewAvailabilityMessage(appointment: AppointmentRecord): string {
+  const eligibility = appointment.reviewEligibility;
+  if (eligibility?.reason === "CANCELLED") {
+    return "Cancelled appointments cannot be reviewed.";
+  }
+  if (eligibility?.reason === "NOT_FINISHED" && eligibility.availableAt) {
+    return `Leave a Review becomes available after ${formatAppointmentDate(eligibility.availableAt)}.`;
+  }
+  if (!eligibility && !canReviewAppointment(appointment)) {
+    return "Leave a Review becomes available after this appointment finishes.";
+  }
+  return "You can now leave a verified customer review.";
 }
 
 function businessDateKey(value: Date): string {
@@ -307,6 +351,10 @@ export default function BookingApp() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
+  const [reviews, setReviews] = useState<ReviewRecord[]>([]);
+  const [reviewingAppointmentId, setReviewingAppointmentId] = useState<string | null>(null);
+  const [reviewForm, setReviewForm] = useState(EMPTY_REVIEW_FORM);
+  const [reviewAvatar, setReviewAvatar] = useState<File | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [bookingNotificationRecipient, setBookingNotificationRecipient] = useState<string | null>(null);
@@ -353,6 +401,10 @@ export default function BookingApp() {
   const nextAppointmentStatus = nextAppointment
     ? getStatusStyles(nextAppointment.status)
     : null;
+
+  useEffect(() => {
+    void loadReviews();
+  }, []);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -614,6 +666,81 @@ export default function BookingApp() {
       setAppointments(data);
     } catch {
       setFeedback("We could not load your appointments right now.");
+    }
+  }
+
+  async function loadReviews() {
+    try {
+      const response = await fetch(`${API_BASE}/api/reviews`);
+      if (!response.ok) {
+        throw new Error("Unable to load reviews.");
+      }
+      setReviews((await response.json()) as ReviewRecord[]);
+    } catch {
+      setReviews([]);
+    }
+  }
+
+  function closeReviewForm() {
+    setReviewingAppointmentId(null);
+    setReviewForm(EMPTY_REVIEW_FORM);
+    setReviewAvatar(null);
+  }
+
+  async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !reviewingAppointmentId || !reviewAvatar) {
+      setFeedback("Choose a profile picture before submitting your review.");
+      return;
+    }
+
+    setLoading(true);
+    setFeedback(null);
+
+    try {
+      const uploadBody = new FormData();
+      uploadBody.append("file", reviewAvatar);
+      const uploadResponse = await fetch(`${API_BASE}/api/files/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: uploadBody,
+      });
+      const upload = await uploadResponse.json().catch(() => null) as { url?: string; message?: string } | null;
+      if (!uploadResponse.ok || !upload?.url) {
+        throw new Error(upload?.message || "Unable to upload your profile picture.");
+      }
+
+      const response = await fetch(`${API_BASE}/api/reviews`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          appointmentId: reviewingAppointmentId,
+          avatarUrl: upload.url,
+          ...reviewForm,
+        }),
+      });
+      const data = await response.json().catch(() => null) as (ReviewRecord & { message?: string }) | null;
+      if (!response.ok || !data?.id) {
+        throw new Error(data?.message || "Unable to submit your review.");
+      }
+
+      setReviews((current) => [data, ...current.filter((review) => review.id !== data.id)].slice(0, 12));
+      setAppointments((current) =>
+        current.map((appointment) =>
+          appointment.id === reviewingAppointmentId
+            ? { ...appointment, review: { id: data.id } }
+            : appointment,
+        ),
+      );
+      closeReviewForm();
+      setFeedback("Thank you. Your review is now live on the website.");
+    } catch (error) {
+      setFeedback((error as Error).message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -1521,6 +1648,9 @@ export default function BookingApp() {
                       const isEditing = editingAppointmentId === appointment.id;
                       const isRescheduling = rescheduleAppointmentId === appointment.id;
                       const deletionRequested = Boolean(appointment.deleteRequestedAt);
+                      const canLeaveReview =
+                        appointment.reviewEligibility?.canReview ??
+                        canReviewAppointment(appointment);
 
                       return (
                         <div key={appointment.id} className="rounded-2xl border border-border bg-background p-5">
@@ -1543,9 +1673,109 @@ export default function BookingApp() {
                             </button>
                             <button onClick={() => { setEditingAppointmentId(appointment.id); setEditDraft({ service: (appointment.serviceId ?? SERVICES.find((service) => service.name === appointment.service)?.id ?? null) as ServiceId | null, notes: appointment.notes || "" }); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Edit</button>
                             <button onClick={() => { setRescheduleAppointmentId(appointment.id); setRescheduleServiceId(appointment.serviceId ?? SERVICES.find((service) => service.name === appointment.service)?.id ?? null); setRescheduleDate(appointmentBusinessDate(appointment.dateTime)); setRescheduleTime(null); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Reschedule</button>
+                            {appointment.review ? (
+                              <span className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">Review submitted</span>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={!canLeaveReview}
+                                onClick={() => {
+                                  setReviewingAppointmentId(appointment.id);
+                                  setReviewForm(EMPTY_REVIEW_FORM);
+                                  setReviewAvatar(null);
+                                  setFeedback(null);
+                                }}
+                                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 disabled:cursor-not-allowed disabled:border-stone-200 disabled:bg-stone-100 disabled:text-stone-500"
+                              >
+                                Leave a Review
+                              </button>
+                            )}
                           </div>
+                          {!appointment.review ? (
+                            <p className={`mt-3 text-xs ${canLeaveReview ? "text-emerald-700" : "text-muted-foreground"}`}>
+                              {reviewAvailabilityMessage(appointment)}
+                            </p>
+                          ) : null}
                           {deletionRequested ? (
                             <p className="mt-3 text-sm text-muted-foreground">A deletion request has been sent to Dominic for approval. The appointment will remain until it is approved and removed. You can resend the request to replace an expired link.</p>
+                          ) : null}
+                          {reviewingAppointmentId === appointment.id ? (
+                            <form onSubmit={handleReviewSubmit} className="mt-4 space-y-4 rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">Rate your completed appointment</p>
+                                <div className="mt-2 flex gap-1" role="radiogroup" aria-label="Star rating">
+                                  {[1, 2, 3, 4, 5].map((rating) => (
+                                    <button
+                                      key={rating}
+                                      type="button"
+                                      role="radio"
+                                      aria-checked={reviewForm.rating === rating}
+                                      aria-label={`${rating} star${rating === 1 ? "" : "s"}`}
+                                      onClick={() => setReviewForm((current) => ({ ...current, rating }))}
+                                      className="rounded p-1"
+                                    >
+                                      <Star size={24} className={rating <= reviewForm.rating ? "fill-amber-400 text-amber-400" : "text-stone-300"} />
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <div>
+                                  <label htmlFor={`review-pet-${appointment.id}`} className="mb-1 block text-sm font-medium text-foreground">Pet name</label>
+                                  <input
+                                    id={`review-pet-${appointment.id}`}
+                                    value={reviewForm.petName}
+                                    onChange={(event) => setReviewForm((current) => ({ ...current, petName: event.target.value }))}
+                                    maxLength={80}
+                                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                                    required
+                                  />
+                                </div>
+                                <div>
+                                  <label htmlFor={`review-breed-${appointment.id}`} className="mb-1 block text-sm font-medium text-foreground">Pet breed</label>
+                                  <input
+                                    id={`review-breed-${appointment.id}`}
+                                    value={reviewForm.petBreed}
+                                    onChange={(event) => setReviewForm((current) => ({ ...current, petBreed: event.target.value }))}
+                                    maxLength={80}
+                                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                                    required
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label htmlFor={`review-avatar-${appointment.id}`} className="mb-1 block text-sm font-medium text-foreground">Avatar or profile picture</label>
+                                <input
+                                  id={`review-avatar-${appointment.id}`}
+                                  type="file"
+                                  accept="image/jpeg,image/png,image/webp"
+                                  onChange={(event) => setReviewAvatar(event.target.files?.[0] ?? null)}
+                                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                                  required
+                                />
+                                <p className="mt-1 text-xs text-muted-foreground">JPEG, PNG, or WebP. Maximum size 5 MB.</p>
+                              </div>
+                              <div>
+                                <label htmlFor={`review-comment-${appointment.id}`} className="mb-1 block text-sm font-medium text-foreground">Your review</label>
+                                <textarea
+                                  id={`review-comment-${appointment.id}`}
+                                  value={reviewForm.comment}
+                                  onChange={(event) => setReviewForm((current) => ({ ...current, comment: event.target.value }))}
+                                  minLength={20}
+                                  maxLength={2000}
+                                  rows={5}
+                                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                                  placeholder="Tell other customers about your experience."
+                                  required
+                                />
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <button type="submit" disabled={loading} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+                                  {loading ? "Submitting review..." : "Submit Review"}
+                                </button>
+                                <button type="button" onClick={closeReviewForm} className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold">Cancel</button>
+                              </div>
+                            </form>
                           ) : null}
                           {isEditing ? (
                             <div className="mt-4 rounded-2xl border border-border bg-card p-4">
@@ -1732,7 +1962,7 @@ export default function BookingApp() {
           <>
             <section className="min-h-screen grid md:grid-cols-2">
               <div className="bg-[#1B2B1B] flex flex-col justify-center px-10 md:px-16 py-24 order-2 md:order-1">
-                <p className="text-[#5A8B60] text-xs font-semibold tracking-[0.2em] uppercase mb-6">Portland, Oregon</p>
+                <p className="text-[#5A8B60] text-xs font-semibold tracking-[0.2em] uppercase mb-6">Essex, UK</p>
                 <h1 className="text-white text-5xl md:text-6xl lg:text-[4.5rem] font-bold font-serif leading-[1.05] mb-8">Expert care for your best friend.</h1>
                 <p className="text-[#A8BFA9] text-lg leading-relaxed mb-10 max-w-md">Grooming, training, daycare, and boarding — all under one roof. Sign in, register, and book in minutes.</p>
                 <div className="flex flex-wrap gap-4">
@@ -1892,24 +2122,38 @@ export default function BookingApp() {
             <section id="about" className="py-24 px-6 bg-[#1B2B1B]">
               <div className="max-w-6xl mx-auto">
                 <div className="mb-14">
-                  <p className="text-[#5A8B60] text-xs font-semibold tracking-[0.18em] uppercase mb-4">What owners say</p>
-                  <h2 className="text-4xl md:text-5xl font-bold font-serif text-white leading-tight">Dogs don't lie about happiness</h2>
+                  <p className="text-[#5A8B60] text-xs font-semibold tracking-[0.18em] uppercase mb-4">Real customer feedback</p>
+                  <h2 className="text-4xl md:text-5xl font-bold font-serif text-white leading-tight">Reviews from Pawside customers</h2>
+                  <p className="mt-4 max-w-2xl text-sm leading-6 text-[#A8BFA9]">Every review shown here was submitted by a registered customer after a completed appointment.</p>
                 </div>
-                <div className="grid md:grid-cols-3 gap-6">
-                  {TESTIMONIALS.map((testimonial) => (
-                    <div key={testimonial.name} className="bg-white/[0.05] border border-white/10 rounded-2xl p-7 flex flex-col hover:bg-white/[0.08] transition-colors">
-                      <div className="flex items-center gap-0.5 mb-5">{Array.from({ length: testimonial.stars }).map((_, index) => <Star key={index} size={13} className="text-amber-400 fill-amber-400" />)}</div>
-                      <blockquote className="text-[#B8CEB9] text-sm leading-relaxed flex-1 mb-7">“{testimonial.text}”</blockquote>
-                      <div className="flex items-center gap-3">
-                        <img src={testimonial.photo} alt={testimonial.name} className="w-10 h-10 rounded-full object-cover bg-[#2A3D2A] shrink-0" />
-                        <div>
-                          <div className="text-white text-sm font-semibold">{testimonial.name}</div>
-                          <div className="text-[#6A9B6C] text-xs mt-0.5">{testimonial.dog}</div>
+                {reviews.length === 0 ? (
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-8 text-sm text-[#B8CEB9]">
+                    No customer reviews have been submitted yet. Completed appointments will offer customers the option to leave the first review.
+                  </div>
+                ) : (
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {reviews.map((review) => (
+                      <article key={review.id} className="bg-white/[0.05] border border-white/10 rounded-2xl p-7 flex flex-col hover:bg-white/[0.08] transition-colors">
+                        <div className="mb-5 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-0.5" aria-label={`${review.rating} out of 5 stars`}>
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star key={star} size={13} className={star <= review.rating ? "text-amber-400 fill-amber-400" : "text-white/20"} />
+                            ))}
+                          </div>
+                          <time dateTime={review.createdAt} className="text-[11px] text-[#6A9B6C]">{formatReviewDate(review.createdAt)}</time>
                         </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                        <blockquote className="text-[#B8CEB9] text-sm leading-relaxed flex-1 mb-7">“{review.comment}”</blockquote>
+                        <div className="flex items-center gap-3">
+                          <img src={resolveAvatarUrl(review.avatarUrl)} alt={`${review.customerName}'s profile`} className="w-10 h-10 rounded-full object-cover bg-[#2A3D2A] shrink-0" />
+                          <div>
+                            <div className="text-white text-sm font-semibold">{review.customerName}</div>
+                            <div className="text-[#6A9B6C] text-xs mt-0.5">{review.petName} — {review.petBreed}</div>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
               </div>
             </section>
 
@@ -1923,7 +2167,7 @@ export default function BookingApp() {
                       </div>
                       <span className="font-bold text-lg font-serif">Pawside</span>
                     </div>
-                    <p className="text-muted-foreground text-sm leading-relaxed max-w-xs">Professional dog grooming, training, daycare, and boarding in the heart of Portland, Oregon.</p>
+                    <p className="text-muted-foreground text-sm leading-relaxed max-w-xs">Professional dog grooming, training, daycare, and boarding in Essex, UK.</p>
                   </div>
                   <div>
                     <h4 className="text-sm font-bold text-foreground mb-4">Services</h4>
@@ -1934,7 +2178,7 @@ export default function BookingApp() {
                   <div>
                     <h4 className="text-sm font-bold text-foreground mb-4">Contact</h4>
                     <ul className="space-y-2.5 text-sm text-muted-foreground">
-                      <li className="flex items-start gap-2"><MapPin size={14} className="mt-0.5 shrink-0" />2847 NW Thurman St, Portland OR</li>
+                      <li className="flex items-start gap-2"><MapPin size={14} className="mt-0.5 shrink-0" />Essex, UK</li>
                       <li className="flex items-center gap-2"><Phone size={14} className="shrink-0" />(503) 555-0142</li>
                     </ul>
                   </div>
