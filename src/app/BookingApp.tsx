@@ -45,6 +45,7 @@ import {
 type ServiceId = "grooming" | "training" | "daycare" | "boarding";
 type AuthMode = "login" | "register";
 type CurrentView = "home" | "login" | "register" | "dashboard" | "delete-account-confirm" | "delete-account-cancel";
+type HomeSection = "services" | "booking" | "about";
 
 interface BookingState {
   service: ServiceId | null;
@@ -266,6 +267,13 @@ function parseDateInput(value: string): Date {
   return new Date(year, month - 1, day);
 }
 
+function homeSectionFromHash(hash: string): HomeSection | null {
+  const section = hash.replace(/^#/, "");
+  return section === "services" || section === "booking" || section === "about"
+    ? section
+    : null;
+}
+
 export default function BookingApp() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -278,6 +286,7 @@ export default function BookingApp() {
   });
   const [bookingStep, setBookingStep] = useState<"select" | "form" | "confirmed">("select");
   const [currentView, setCurrentView] = useState<CurrentView>("home");
+  const [sectionTarget, setSectionTarget] = useState<HomeSection | null>(null);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [authForm, setAuthForm] = useState({
     firstName: "",
@@ -338,6 +347,7 @@ export default function BookingApp() {
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
+    const initialSection = homeSectionFromHash(window.location.hash);
     const deletionToken = searchParams.get("deleteAccountToken");
     const cancellationToken = searchParams.get("cancelDeleteAccountToken");
     const deletionActionView: CurrentView | null = cancellationToken
@@ -355,6 +365,10 @@ export default function BookingApp() {
     if (deletionActionView) {
       setCurrentView(deletionActionView);
     }
+    if (!deletionActionView && initialSection) {
+      setCurrentView("home");
+      setSectionTarget(initialSection);
+    }
 
     const saved = window.localStorage.getItem(SESSION_STORAGE_KEY);
     if (!saved) {
@@ -365,7 +379,7 @@ export default function BookingApp() {
       const parsed = JSON.parse(saved) as { user: UserProfile; token: string };
       setUser(parsed.user);
       setToken(parsed.token);
-      if (!deletionActionView) {
+      if (!deletionActionView && !initialSection) {
         setCurrentView("dashboard");
       }
     } catch {
@@ -376,6 +390,36 @@ export default function BookingApp() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [currentView]);
+
+  useEffect(() => {
+    if (currentView !== "home" || !sectionTarget) {
+      return;
+    }
+
+    const animationFrameId = window.requestAnimationFrame(() => {
+      document.getElementById(sectionTarget)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      setSectionTarget(null);
+    });
+
+    return () => window.cancelAnimationFrame(animationFrameId);
+  }, [currentView, sectionTarget]);
+
+  useEffect(() => {
+    function handleHashChange() {
+      const section = homeSectionFromHash(window.location.hash);
+      if (section) {
+        setCurrentView("home");
+        setMenuOpen(false);
+        setSectionTarget(section);
+      }
+    }
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -989,8 +1033,16 @@ export default function BookingApp() {
     }
   }
 
+  function navigateToSection(section: HomeSection) {
+    const nextUrl = `${window.location.pathname}${window.location.search}#${section}`;
+    window.history.pushState({}, "", nextUrl);
+    setCurrentView("home");
+    setMenuOpen(false);
+    setSectionTarget(section);
+  }
+
   function scrollToBooking() {
-    document.getElementById("booking")?.scrollIntoView({ behavior: "smooth" });
+    navigateToSection("booking");
   }
 
   return (
@@ -1004,9 +1056,9 @@ export default function BookingApp() {
             <span className="font-bold text-xl tracking-tight font-serif">Pawside</span>
           </button>
           <div className="hidden md:flex items-center gap-6">
-            <a href="#services" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Services</a>
+            <a href="#services" onClick={(event) => { event.preventDefault(); navigateToSection("services"); }} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Services</a>
             <button onClick={scrollToBooking} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Book</button>
-            <a href="#about" className="text-sm text-muted-foreground hover:text-foreground transition-colors">About</a>
+            <a href="#about" onClick={(event) => { event.preventDefault(); navigateToSection("about"); }} className="text-sm text-muted-foreground hover:text-foreground transition-colors">About</a>
             {user ? (
               <>
                 <button onClick={() => setCurrentView("dashboard")} className="text-sm font-semibold text-foreground">My Account</button>
@@ -1025,9 +1077,9 @@ export default function BookingApp() {
         </div>
         {menuOpen && (
           <div className="md:hidden bg-background border-t border-border px-6 py-5 flex flex-col gap-4">
-            <a href="#services" className="text-muted-foreground text-sm" onClick={() => setMenuOpen(false)}>Services</a>
-            <button onClick={() => { setMenuOpen(false); scrollToBooking(); }} className="text-muted-foreground text-sm text-left">Book</button>
-            <a href="#about" className="text-muted-foreground text-sm" onClick={() => setMenuOpen(false)}>About</a>
+            <a href="#services" className="text-muted-foreground text-sm" onClick={(event) => { event.preventDefault(); navigateToSection("services"); }}>Services</a>
+            <button onClick={scrollToBooking} className="text-muted-foreground text-sm text-left">Book</button>
+            <a href="#about" className="text-muted-foreground text-sm" onClick={(event) => { event.preventDefault(); navigateToSection("about"); }}>About</a>
             {user ? (
               <>
                 <button onClick={() => { setCurrentView("dashboard"); setMenuOpen(false); }} className="text-sm font-semibold text-left">My Account</button>

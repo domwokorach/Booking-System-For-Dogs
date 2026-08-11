@@ -165,7 +165,9 @@ docker compose up --watch
 ```
 
 Changes under `src/` are synchronized into the running backend container and
-picked up by the NestJS `tsx` development watcher. Changes to `package.json`,
+compiled by TypeScript watch mode; Node then restarts the compiled NestJS
+application. Using the TypeScript compiler here preserves the emitted decorator
+metadata required by NestJS constructor injection. Changes to `package.json`,
 `prisma/`, `tsconfig.json`, or the Dockerfile rebuild and replace the backend
 container because they affect dependencies, generated Prisma Client code,
 migrations, compilation, or the image itself. The `node_modules/` directory is

@@ -23,7 +23,29 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: dog-booking-backend
-    command: ["sh", "-c", "npx prisma migrate deploy && npm run dev"]
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        cleanup() {
+          trap - INT TERM EXIT
+          kill "$$compiler_pid" "$$server_pid" 2>/dev/null || true
+          wait "$$compiler_pid" "$$server_pid" 2>/dev/null || true
+        }
+        npx prisma migrate deploy
+        npm run build
+        npx tsc --watch --preserveWatchOutput &
+        compiler_pid=$$!
+        node --watch dist/main.js &
+        server_pid=$$!
+        trap cleanup INT TERM EXIT
+        set +e
+        wait "$$server_pid"
+        exit_code=$$?
+        set -e
+        cleanup
+        exit "$$exit_code"
     restart: unless-stopped
     depends_on:
       postgres:
