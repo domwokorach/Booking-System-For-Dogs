@@ -153,6 +153,18 @@ STRIPE_CURRENCY="gbp"
 FRONTEND_URL="http://localhost:5173"
 ```
 
+The optional Vite-side publishable key belongs in the repository root's
+ignored `.env.local` file:
+
+```env
+VITE_STRIPE_PUBLISHABLE_KEY="pk_test_..."
+```
+
+Hosted Checkout currently redirects to the server-created Checkout Session URL,
+so Stripe.js and the publishable key are not required for the payment flow. The
+publishable key is configured for future client-side Stripe.js features only;
+the secret key must remain in `backend/.env`.
+
 For local webhook delivery, run the Stripe CLI in a separate terminal and copy
 the displayed `whsec_...` signing secret into `STRIPE_WEBHOOK_SECRET`:
 
