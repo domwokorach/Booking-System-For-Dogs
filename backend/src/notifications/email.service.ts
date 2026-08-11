@@ -46,7 +46,9 @@ export class EmailService {
     return sendBookingCancellationEmail(data);
   }
 
-  sendDeletionRequest(data: BookingEmailData): Promise<boolean> {
+  sendDeletionRequest(
+    data: BookingEmailData & { approvalUrl: string },
+  ): Promise<boolean> {
     return sendDeletionRequestEmail(data);
   }
 

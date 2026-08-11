@@ -1,9 +1,7 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
-  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -17,6 +15,7 @@ import type { AuthUser } from "../auth/auth.types.js";
 import { CurrentUser } from "../auth/current-user.decorator.js";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard.js";
 import {
+  approveAppointmentDeletionSchema,
   availableAppointmentsQuerySchema,
   createAppointmentSchema,
   rescheduleAppointmentSchema,
@@ -32,6 +31,18 @@ export class AppointmentAvailabilityController {
   available(@Query() query: Record<string, unknown>) {
     const { date } = availableAppointmentsQuerySchema.parse(query);
     return this.appointmentsService.available(date);
+  }
+}
+
+@Controller("api/appointments")
+export class AppointmentDeletionController {
+  constructor(private readonly appointmentsService: AppointmentsService) {}
+
+  @Post("delete/confirm")
+  @HttpCode(HttpStatus.OK)
+  approveDeletion(@Body() body: unknown) {
+    const { token } = approveAppointmentDeletionSchema.parse(body);
+    return this.appointmentsService.approveDeletion(token);
   }
 }
 
@@ -97,15 +108,6 @@ export class AppointmentsController {
   @Patch(":id/cancel")
   cancel(@CurrentUser() user: AuthUser, @Param("id") id: string) {
     return this.appointmentsService.cancel(user, id);
-  }
-
-  @Delete(":id")
-  delete(
-    @CurrentUser() user: AuthUser,
-    @Param("id") id: string,
-    @Headers("x-delete-approval-token") approvalToken?: string,
-  ) {
-    return this.appointmentsService.delete(user, id, approvalToken);
   }
 
   @Post(":id/delete-request")

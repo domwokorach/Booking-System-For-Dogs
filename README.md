@@ -327,6 +327,17 @@ PATCH /api/bookings/:id/reschedule
 PATCH /api/bookings/:id/cancel
 ```
 
+### Appointment deletion approval
+
+```http
+POST /api/appointments/:id/delete-request
+POST /api/appointments/delete/confirm
+```
+
+The authenticated request endpoint emails the administrator a single-use
+approval link. Only a SHA-256 token hash is stored in PostgreSQL, and the link
+expires after 30 minutes.
+
 ## Confirm Appointment
 
 Frontend request:

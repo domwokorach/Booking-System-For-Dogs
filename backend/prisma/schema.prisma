@@ -62,12 +62,24 @@ model Appointment {
   cancelledAt      DateTime?
   deleteRequestedAt DateTime?
   rescheduledFrom  DateTime?
+  deletionRequest  AppointmentDeletionRequest?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
   @@index([userId])
   @@index([dateTime])
   @@index([serviceId])
+}
+
+model AppointmentDeletionRequest {
+  id            String      @id @default(uuid())
+  appointmentId String      @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  tokenHash     String      @unique
+  expiresAt     DateTime
+  createdAt     DateTime    @default(now())
+
+  @@index([expiresAt])
 }
 
 model PasswordResetToken {

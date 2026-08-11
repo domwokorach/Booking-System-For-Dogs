@@ -16,3 +16,6 @@ export const rescheduleAppointmentSchema = z.object({
 export const availableAppointmentsQuerySchema = z.object({
     date: dateKeySchema,
 });
+export const approveAppointmentDeletionSchema = z.object({
+    token: z.string().min(1),
+});

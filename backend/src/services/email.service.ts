@@ -134,12 +134,19 @@ export async function sendBookingCancellationEmail(data: BookingEmailData) {
   return results.every(Boolean);
 }
 
-export async function sendDeletionRequestEmail(data: BookingEmailData) {
+export async function sendDeletionRequestEmail(
+  data: BookingEmailData & { approvalUrl: string },
+) {
+  const safeApprovalUrl = escapeHtml(data.approvalUrl);
+  const safeBookingId = escapeHtml(data.bookingId ?? "Not available");
+  const safeService = escapeHtml(formatService(data.service));
+
   return sendMailSafely({
     from: env.EMAIL_FROM,
     to: resolveBookingRecipient(data.to),
     subject: "Deletion approval requested",
-    text: `Hi ${data.firstName},\n\nA deletion request has been submitted for this booking and needs approval before the appointment can be removed.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nSelected service: ${formatService(data.service)}\nAppointment date: ${formatDate(data.appointmentDateTime)}\nAppointment time: ${formatTime(data.appointmentDateTime)}\nBooking status: ${data.status}.\n\nPlease review and approve the deletion request before the appointment is removed.`,
+    text: `A deletion request has been submitted for an appointment and needs administrator approval.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nCustomer: ${data.firstName}\nSelected service: ${formatService(data.service)}\nAppointment date: ${formatDate(data.appointmentDateTime)}\nAppointment time: ${formatTime(data.appointmentDateTime)}\nBooking status: ${data.status}.\n\nApprove deletion: ${data.approvalUrl}\n\nThis single-use link expires in 30 minutes.`,
+    html: `<p>An appointment deletion request needs administrator approval.</p><p><strong>Booking ID:</strong> ${safeBookingId}</p><p><strong>Selected service:</strong> ${safeService}</p><p><a href="${safeApprovalUrl}" style="display:inline-block;padding:12px 18px;background:#b91c1c;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Review deletion request</a></p><p>This single-use link expires in 30 minutes.</p>`,
   });
 }
 

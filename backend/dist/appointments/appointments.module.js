@@ -6,14 +6,18 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 };
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module.js";
-import { AppointmentAvailabilityController, AppointmentsController, } from "./appointments.controller.js";
+import { AppointmentAvailabilityController, AppointmentDeletionController, AppointmentsController, } from "./appointments.controller.js";
 import { AppointmentsService } from "./appointments.service.js";
 let AppointmentsModule = class AppointmentsModule {
 };
 AppointmentsModule = __decorate([
     Module({
         imports: [AuthModule],
-        controllers: [AppointmentAvailabilityController, AppointmentsController],
+        controllers: [
+            AppointmentAvailabilityController,
+            AppointmentDeletionController,
+            AppointmentsController,
+        ],
         providers: [AppointmentsService],
     })
 ], AppointmentsModule);

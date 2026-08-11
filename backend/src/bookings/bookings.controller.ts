@@ -1,9 +1,7 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
-  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -83,15 +81,6 @@ export class BookingsController {
   @Patch(":id/cancel")
   cancel(@CurrentUser() user: AuthUser, @Param("id") id: string) {
     return this.bookingsService.cancel(user, id);
-  }
-
-  @Delete(":id")
-  delete(
-    @CurrentUser() user: AuthUser,
-    @Param("id") id: string,
-    @Headers("x-delete-approval-token") approvalToken?: string,
-  ) {
-    return this.bookingsService.delete(user, id, approvalToken);
   }
 
   @Post(":id/delete-request")

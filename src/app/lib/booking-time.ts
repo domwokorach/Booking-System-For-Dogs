@@ -1,5 +1,5 @@
 export const BUSINESS_TIME_ZONE =
-  import.meta.env.VITE_BUSINESS_TIME_ZONE?.trim() || "America/Los_Angeles";
+  import.meta.env.VITE_BUSINESS_TIME_ZONE?.trim() || "Europe/London";
 
 export function resolveAppointmentDateTime(date: Date, slot: string): string {
   const normalizedSlot = slot.trim();

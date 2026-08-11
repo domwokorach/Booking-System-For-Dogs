@@ -10,10 +10,10 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-import { Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards, } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards, } from "@nestjs/common";
 import { CurrentUser } from "../auth/current-user.decorator.js";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard.js";
-import { availableAppointmentsQuerySchema, createAppointmentSchema, rescheduleAppointmentSchema, updateAppointmentSchema, } from "./dto/appointments.schemas.js";
+import { approveAppointmentDeletionSchema, availableAppointmentsQuerySchema, createAppointmentSchema, rescheduleAppointmentSchema, updateAppointmentSchema, } from "./dto/appointments.schemas.js";
 import { AppointmentsService } from "./appointments.service.js";
 let AppointmentAvailabilityController = class AppointmentAvailabilityController {
     appointmentsService;
@@ -37,6 +37,29 @@ AppointmentAvailabilityController = __decorate([
     __metadata("design:paramtypes", [AppointmentsService])
 ], AppointmentAvailabilityController);
 export { AppointmentAvailabilityController };
+let AppointmentDeletionController = class AppointmentDeletionController {
+    appointmentsService;
+    constructor(appointmentsService) {
+        this.appointmentsService = appointmentsService;
+    }
+    approveDeletion(body) {
+        const { token } = approveAppointmentDeletionSchema.parse(body);
+        return this.appointmentsService.approveDeletion(token);
+    }
+};
+__decorate([
+    Post("delete/confirm"),
+    HttpCode(HttpStatus.OK),
+    __param(0, Body()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], AppointmentDeletionController.prototype, "approveDeletion", null);
+AppointmentDeletionController = __decorate([
+    Controller("api/appointments"),
+    __metadata("design:paramtypes", [AppointmentsService])
+], AppointmentDeletionController);
+export { AppointmentDeletionController };
 let AppointmentsController = class AppointmentsController {
     appointmentsService;
     constructor(appointmentsService) {
@@ -63,9 +86,6 @@ let AppointmentsController = class AppointmentsController {
     }
     cancel(user, id) {
         return this.appointmentsService.cancel(user, id);
-    }
-    delete(user, id, approvalToken) {
-        return this.appointmentsService.delete(user, id, approvalToken);
     }
     requestDeletion(user, id) {
         return this.appointmentsService.requestDeletion(user, id);
@@ -138,15 +158,6 @@ __decorate([
     __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", void 0)
 ], AppointmentsController.prototype, "cancel", null);
-__decorate([
-    Delete(":id"),
-    __param(0, CurrentUser()),
-    __param(1, Param("id")),
-    __param(2, Headers("x-delete-approval-token")),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String, String]),
-    __metadata("design:returntype", void 0)
-], AppointmentsController.prototype, "delete", null);
 __decorate([
     Post(":id/delete-request"),
     HttpCode(HttpStatus.OK),

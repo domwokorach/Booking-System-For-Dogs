@@ -1,7 +1,8 @@
+import { createHash, randomBytes } from "node:crypto";
+
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -354,71 +355,111 @@ export class AppointmentsService {
     return updated;
   }
 
-  async delete(user: AuthUser, id: string, approvalToken?: string) {
-    this.assertDeletionApproved(approvalToken);
-    const existing = await this.findOwned(user.id, id);
-    if (!existing.deleteRequestedAt) {
-      throw new BadRequestException("Deletion request not found.");
+  async approveDeletion(token: string) {
+    const tokenHash = this.hashAppointmentDeletionToken(token);
+    const request = await this.prisma.appointmentDeletionRequest.findUnique({
+      where: { tokenHash },
+      include: { appointment: { include: safeAppointmentInclude } },
+    });
+
+    if (!request || request.expiresAt <= new Date()) {
+      throw new BadRequestException(
+        "This deletion approval link is invalid, expired, or already used.",
+      );
     }
 
-    const deleted = await this.prisma.appointment.deleteMany({
-      where: {
-        id,
-        userId: user.id,
-        deleteRequestedAt: { not: null },
-      },
+    const appointment = request.appointment;
+    await this.prisma.$transaction(async (transaction) => {
+      const claimed = await transaction.appointmentDeletionRequest.deleteMany({
+        where: {
+          id: request.id,
+          tokenHash,
+          expiresAt: { gt: new Date() },
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException(
+          "This deletion approval link is invalid, expired, or already used.",
+        );
+      }
+
+      const deleted = await transaction.appointment.deleteMany({
+        where: {
+          id: request.appointmentId,
+          deleteRequestedAt: { not: null },
+        },
+      });
+      if (deleted.count !== 1) {
+        throw new ConflictException("The deletion request is no longer valid.");
+      }
     });
-    if (deleted.count !== 1) {
-      throw new ConflictException("The deletion request is no longer valid.");
-    }
 
     await this.email.sendBookingCancellation({
-      to: existing.user.email,
-      firstName: existing.user.firstName,
-      bookingId: existing.id,
-      service: existing.serviceRef?.name ?? existing.service,
-      appointmentDateTime: existing.dateTime,
-      status: existing.status,
+      to: appointment.user.email,
+      firstName: appointment.user.firstName,
+      bookingId: appointment.id,
+      service: appointment.serviceRef?.name ?? appointment.service,
+      appointmentDateTime: appointment.dateTime,
+      status: appointment.status,
     });
-    this.realtime.emitToUser(user.id, "appointments:deleted", {
-      appointmentId: existing.id,
+    this.realtime.emitToUser(appointment.userId, "appointments:deleted", {
+      appointmentId: appointment.id,
     });
-    return { message: "Appointment deleted successfully" };
+
+    return {
+      success: true,
+      appointmentId: appointment.id,
+      message: "Appointment deletion approved and completed.",
+    };
   }
 
   async requestDeletion(user: AuthUser, id: string) {
-    const existing = await this.findOwned(user.id, id);
-    if (existing.deleteRequestedAt) {
-      return { message: "Deletion request already sent." };
-    }
+    await this.findOwned(user.id, id);
+    const rawToken = randomBytes(32).toString("hex");
+    const tokenHash = this.hashAppointmentDeletionToken(rawToken);
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
     const updated = await this.prisma.$transaction(async (transaction) => {
       const changed = await transaction.appointment.updateMany({
-        where: { id, userId: user.id, deleteRequestedAt: null },
+        where: { id, userId: user.id },
         data: { deleteRequestedAt: new Date() },
       });
       if (changed.count !== 1) {
-        return null;
+        throw new ConflictException("The appointment state changed. Please retry.");
       }
+
+      await transaction.appointmentDeletionRequest.upsert({
+        where: { appointmentId: id },
+        update: { tokenHash, expiresAt, createdAt: new Date() },
+        create: { appointmentId: id, tokenHash, expiresAt },
+      });
+
       return this.findOwned(user.id, id, transaction);
     });
-    if (!updated) {
-      return { message: "Deletion request already sent." };
-    }
-    await this.email.sendDeletionRequest({
+    const approvalUrl = `${env.FRONTEND_URL.replace(/\/$/, "")}/?deleteAppointmentToken=${rawToken}`;
+    const emailDelivered = await this.email.sendDeletionRequest({
       to: updated.user.email,
       firstName: updated.user.firstName,
       bookingId: updated.id,
       service: updated.serviceRef?.name ?? updated.service,
       appointmentDateTime: updated.dateTime,
       status: updated.status,
+      approvalUrl,
     });
     this.realtime.emitToUser(user.id, "appointments:updated", {
       appointmentId: updated.id,
       dateTime: updated.dateTime,
       status: updated.status,
     });
-    return { message: "Deletion request sent for approval." };
+    return {
+      success: true,
+      appointmentId: updated.id,
+      expiresAt,
+      emailDelivered,
+      message: emailDelivered
+        ? "Deletion approval link sent to the administrator."
+        : "Deletion request created, but the approval email could not be delivered.",
+    };
   }
 
   async sendConfirmation(user: AuthUser, id: string) {
@@ -484,11 +525,8 @@ export class AppointmentsService {
     return appointment;
   }
 
-  private assertDeletionApproved(approvalToken?: string): void {
-    const expected = env.DELETE_APPROVAL_TOKEN.trim();
-    if (!approvalToken?.trim() || !expected || approvalToken.trim() !== expected) {
-      throw new ForbiddenException("Deletion approval required.");
-    }
+  private hashAppointmentDeletionToken(token: string): string {
+    return createHash("sha256").update(token).digest("hex");
   }
 
   private rethrowSlotConflict(error: unknown, message: string): never {

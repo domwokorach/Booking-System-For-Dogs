@@ -69,8 +69,14 @@ PATCH /api/appointments/:id/confirm
 PATCH /api/appointments/:id/cancel
 PATCH /api/appointments/:id/reschedule
 GET  /api/appointments/:id/slots
+POST /api/appointments/:id/delete-request
+POST /api/appointments/delete/confirm
 POST /api/users/me/delete-request
 ```
+
+Appointment deletion requests generate a random approval token and email the
+administrator a frontend review link. PostgreSQL stores only the token hash;
+approval is single-use and expires after 30 minutes.
 
 Socket.IO uses the same backend server and port. Clients authenticate with an
 access token in `handshake.auth.token` and receive appointment events in their
@@ -104,7 +110,7 @@ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/dog_booking?schema=p
 PORT=4000
 CLIENT_ORIGIN="http://localhost:5173"
 FRONTEND_URL="http://localhost:5173"
-BUSINESS_TIME_ZONE="America/Los_Angeles"
+BUSINESS_TIME_ZONE="Europe/London"
 JWT_SECRET="replace-with-at-least-32-random-characters"
 ```
 
@@ -218,7 +224,7 @@ same long-running Docker or Render service:
 ```env
 VITE_API_URL="https://your-backend.example.com"
 VITE_SOCKET_URL="https://your-backend.example.com"
-VITE_BUSINESS_TIME_ZONE="America/Los_Angeles"
+VITE_BUSINESS_TIME_ZONE="Europe/London"
 ```
 
 Do not send HTTP mutations to the serverless function while Socket.IO clients

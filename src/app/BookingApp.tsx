@@ -17,6 +17,8 @@ import {
   UserPlus,
   CalendarClock,
   Trash2,
+  KeyRound,
+  Mail,
 } from "lucide-react";
 import {
   format,
@@ -44,7 +46,7 @@ import {
 
 type ServiceId = "grooming" | "training" | "daycare" | "boarding";
 type AuthMode = "login" | "register";
-type CurrentView = "home" | "login" | "register" | "dashboard" | "delete-account-confirm" | "delete-account-cancel";
+type CurrentView = "home" | "login" | "register" | "forgot-password" | "reset-password" | "dashboard" | "delete-appointment-confirm" | "delete-account-confirm" | "delete-account-cancel";
 type HomeSection = "services" | "booking" | "about";
 
 interface BookingState {
@@ -297,6 +299,11 @@ export default function BookingApp() {
     password: "",
     confirmPassword: "",
   });
+  const [passwordResetToken, setPasswordResetToken] = useState<string | null>(null);
+  const [resetPasswordForm, setResetPasswordForm] = useState({
+    password: "",
+    confirmPassword: "",
+  });
   const [user, setUser] = useState<UserProfile | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
@@ -316,6 +323,8 @@ export default function BookingApp() {
     confirmation: "",
   });
   const [accountDeletionToken, setAccountDeletionToken] = useState<string | null>(null);
+  const [appointmentDeletionToken, setAppointmentDeletionToken] = useState<string | null>(null);
+  const [appointmentDeletionCompleted, setAppointmentDeletionCompleted] = useState(false);
 
   const canProceed = Boolean(selectedDate && booking.service && booking.time);
   const bookingRequirementsMessage = !selectedDate
@@ -348,13 +357,20 @@ export default function BookingApp() {
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const initialSection = homeSectionFromHash(window.location.hash);
+    const isPasswordResetPath = /\/reset-password\/?$/.test(window.location.pathname);
+    const initialPasswordResetToken = isPasswordResetPath
+      ? searchParams.get("token")
+      : null;
     const deletionToken = searchParams.get("deleteAccountToken");
     const cancellationToken = searchParams.get("cancelDeleteAccountToken");
+    const initialAppointmentDeletionToken = searchParams.get("deleteAppointmentToken");
     const deletionActionView: CurrentView | null = cancellationToken
       ? "delete-account-cancel"
       : deletionToken
         ? "delete-account-confirm"
-        : null;
+        : initialAppointmentDeletionToken
+          ? "delete-appointment-confirm"
+          : null;
 
     if (cancellationToken) {
       setAccountDeletionToken(cancellationToken);
@@ -362,10 +378,20 @@ export default function BookingApp() {
     if (deletionToken) {
       setAccountDeletionToken(deletionToken);
     }
+    if (initialAppointmentDeletionToken) {
+      setAppointmentDeletionToken(initialAppointmentDeletionToken);
+    }
     if (deletionActionView) {
       setCurrentView(deletionActionView);
     }
-    if (!deletionActionView && initialSection) {
+    if (!deletionActionView && isPasswordResetPath) {
+      setPasswordResetToken(initialPasswordResetToken);
+      setCurrentView("reset-password");
+      if (!initialPasswordResetToken) {
+        setFeedback("This password reset link is invalid or incomplete.");
+      }
+    }
+    if (!deletionActionView && !isPasswordResetPath && initialSection) {
       setCurrentView("home");
       setSectionTarget(initialSection);
     }
@@ -379,7 +405,7 @@ export default function BookingApp() {
       const parsed = JSON.parse(saved) as { user: UserProfile; token: string };
       setUser(parsed.user);
       setToken(parsed.token);
-      if (!deletionActionView && !initialSection) {
+      if (!deletionActionView && !isPasswordResetPath && !initialSection) {
         setCurrentView("dashboard");
       }
     } catch {
@@ -730,6 +756,46 @@ export default function BookingApp() {
     setCurrentView(user ? "dashboard" : "home");
   }
 
+  async function handleConfirmAppointmentDeletion() {
+    if (!appointmentDeletionToken) {
+      setFeedback("This appointment deletion link is invalid.");
+      return;
+    }
+
+    setLoading(true);
+    setFeedback(null);
+    setAppointmentDeletionCompleted(false);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/appointments/delete/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: appointmentDeletionToken }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.message || "Unable to approve the appointment deletion.");
+      }
+
+      window.history.replaceState({}, "", window.location.pathname);
+      setAppointmentDeletionToken(null);
+      setAppointmentDeletionCompleted(true);
+      setFeedback(data?.message || "Appointment deletion approved and completed.");
+    } catch (error) {
+      setFeedback((error as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function leaveAppointmentDeletionApproval() {
+    window.history.replaceState({}, "", window.location.pathname);
+    setAppointmentDeletionToken(null);
+    setAppointmentDeletionCompleted(false);
+    setFeedback(null);
+    setCurrentView(user ? "dashboard" : "home");
+  }
+
   async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
@@ -784,6 +850,99 @@ export default function BookingApp() {
         password: "",
         confirmPassword: "",
       });
+    } catch (error) {
+      setFeedback((error as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function clearPasswordResetUrl() {
+    const appPath = window.location.pathname.replace(/\/reset-password\/?$/, "/") || "/";
+    window.history.replaceState({}, "", appPath);
+  }
+
+  function showForgotPassword() {
+    clearPasswordResetUrl();
+    setPasswordResetToken(null);
+    setResetPasswordForm({ password: "", confirmPassword: "" });
+    setCurrentView("forgot-password");
+    setFeedback(null);
+  }
+
+  function showSignIn(message: string | null = null) {
+    clearPasswordResetUrl();
+    setPasswordResetToken(null);
+    setResetPasswordForm({ password: "", confirmPassword: "" });
+    setAuthMode("login");
+    setCurrentView("login");
+    setFeedback(message);
+  }
+
+  async function handleForgotPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setFeedback(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authForm.email }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.message || "Unable to request a password reset. Please try again.");
+      }
+
+      setFeedback(
+        data?.message || "If the email exists, a password reset link has been sent.",
+      );
+    } catch (error) {
+      setFeedback((error as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResetPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFeedback(null);
+
+    if (!passwordResetToken) {
+      setFeedback("This password reset link is invalid or incomplete.");
+      return;
+    }
+    if (resetPasswordForm.password.length < 8) {
+      setFeedback("Your new password must be at least 8 characters.");
+      return;
+    }
+    if (resetPasswordForm.password !== resetPasswordForm.confirmPassword) {
+      setFeedback("Passwords do not match.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: passwordResetToken,
+          password: resetPasswordForm.password,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.message || "Unable to reset your password. Please request a new link.");
+      }
+
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+      window.localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
+      setUser(null);
+      setToken(null);
+      setAppointments([]);
+      showSignIn("Password reset successful. Sign in with your new password.");
     } catch (error) {
       setFeedback((error as Error).message);
     } finally {
@@ -932,7 +1091,7 @@ export default function BookingApp() {
         throw new Error(data.message || "Unable to request deletion.");
       }
 
-      setFeedback("Deletion request sent for approval.");
+      setFeedback(data.message || "Deletion request sent for approval.");
       void loadAppointments();
     } catch (error) {
       setFeedback((error as Error).message);
@@ -1096,7 +1255,44 @@ export default function BookingApp() {
       </nav>
 
       <div className="pt-16">
-        {currentView === "delete-account-cancel" ? (
+        {currentView === "delete-appointment-confirm" ? (
+          <section className="min-h-[calc(100vh-4rem)] px-6 py-16 flex items-center justify-center">
+            <div className={`w-full max-w-xl rounded-3xl border bg-card p-8 text-center shadow-sm ${appointmentDeletionCompleted ? "border-emerald-200" : "border-red-200"}`}>
+              <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full ${appointmentDeletionCompleted ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                {appointmentDeletionCompleted ? <Check size={22} /> : <Trash2 size={22} />}
+              </div>
+              <p className={`mt-6 text-sm font-semibold uppercase tracking-[0.2em] ${appointmentDeletionCompleted ? "text-emerald-700" : "text-red-700"}`}>Administrator approval</p>
+              <h2 className="mt-2 text-3xl font-bold font-serif text-foreground">
+                {appointmentDeletionCompleted ? "Appointment deleted" : "Review appointment deletion"}
+              </h2>
+              <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                {appointmentDeletionCompleted
+                  ? "The request was approved and the appointment has been permanently removed. This approval link cannot be used again."
+                  : "Approving this request permanently removes the appointment. This secure link expires after 30 minutes and can be used only once."}
+              </p>
+              {feedback ? (
+                <div role={appointmentDeletionCompleted ? "status" : "alert"} className={`mt-5 rounded-xl border px-4 py-3 text-sm ${appointmentDeletionCompleted ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`}>
+                  {feedback}
+                </div>
+              ) : null}
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                {!appointmentDeletionCompleted ? (
+                  <button
+                    type="button"
+                    onClick={handleConfirmAppointmentDeletion}
+                    disabled={loading || !appointmentDeletionToken}
+                    className="rounded-xl bg-red-700 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {loading ? "Approving deletion..." : "Approve and delete appointment"}
+                  </button>
+                ) : null}
+                <button type="button" onClick={leaveAppointmentDeletionApproval} className="rounded-xl border border-border px-5 py-3 text-sm font-semibold text-foreground">
+                  {appointmentDeletionCompleted ? "Return home" : "Leave without deleting"}
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : currentView === "delete-account-cancel" ? (
           <section className="min-h-[calc(100vh-4rem)] px-6 py-16 flex items-center justify-center">
             <div className="w-full max-w-xl rounded-3xl border border-emerald-200 bg-card p-8 text-center shadow-sm">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
@@ -1150,6 +1346,94 @@ export default function BookingApp() {
               </div>
             </div>
           </section>
+        ) : currentView === "forgot-password" ? (
+          <section className="min-h-[calc(100vh-4rem)] px-6 py-16 flex items-center justify-center">
+            <div className="w-full max-w-xl rounded-3xl border border-border bg-card p-8 shadow-sm">
+              <div className="mb-8 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-primary uppercase tracking-[0.2em]">Account recovery</p>
+                  <h2 className="text-3xl font-bold font-serif text-foreground">Forgot your password?</h2>
+                </div>
+                <Mail className="text-primary" size={24} />
+              </div>
+              <p className="mb-6 text-sm leading-6 text-muted-foreground">
+                Enter the email address for your Pawside account. We’ll send you a secure link that expires in one hour.
+              </p>
+              {feedback ? <div role="status" aria-live="polite" className="mb-5 rounded-xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">{feedback}</div> : null}
+              <form className="space-y-4" onSubmit={handleForgotPassword}>
+                <div>
+                  <label htmlFor="forgot-password-email" className="mb-1.5 block text-sm font-medium text-foreground">Email address</label>
+                  <input
+                    id="forgot-password-email"
+                    type="email"
+                    autoComplete="email"
+                    value={authForm.email}
+                    onChange={(event) => setAuthForm((current) => ({ ...current, email: event.target.value }))}
+                    className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm"
+                    placeholder="you@example.com"
+                    required
+                  />
+                </div>
+                <button disabled={loading} className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-70">
+                  {loading ? "Sending reset link..." : "Send Reset Link"}
+                </button>
+              </form>
+              <button type="button" onClick={() => showSignIn()} className="mt-6 text-sm font-semibold text-foreground hover:text-primary">
+                Back to sign in
+              </button>
+            </div>
+          </section>
+        ) : currentView === "reset-password" ? (
+          <section className="min-h-[calc(100vh-4rem)] px-6 py-16 flex items-center justify-center">
+            <div className="w-full max-w-xl rounded-3xl border border-border bg-card p-8 shadow-sm">
+              <div className="mb-8 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-primary uppercase tracking-[0.2em]">Account recovery</p>
+                  <h2 className="text-3xl font-bold font-serif text-foreground">Choose a new password</h2>
+                </div>
+                <KeyRound className="text-primary" size={24} />
+              </div>
+              <p className="mb-6 text-sm leading-6 text-muted-foreground">
+                Use at least 8 characters. After resetting your password, you’ll return to sign in.
+              </p>
+              {feedback ? <div role="alert" className="mb-5 rounded-xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">{feedback}</div> : null}
+              <form className="space-y-4" onSubmit={handleResetPassword}>
+                <div>
+                  <label htmlFor="new-password" className="mb-1.5 block text-sm font-medium text-foreground">New password</label>
+                  <input
+                    id="new-password"
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    value={resetPasswordForm.password}
+                    onChange={(event) => setResetPasswordForm((current) => ({ ...current, password: event.target.value }))}
+                    className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm"
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="confirm-new-password" className="mb-1.5 block text-sm font-medium text-foreground">Confirm new password</label>
+                  <input
+                    id="confirm-new-password"
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    value={resetPasswordForm.confirmPassword}
+                    onChange={(event) => setResetPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))}
+                    className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm"
+                    required
+                  />
+                </div>
+                <button disabled={loading || !passwordResetToken} className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-70">
+                  {loading ? "Resetting password..." : "Reset Password"}
+                </button>
+              </form>
+              <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                <button type="button" onClick={showForgotPassword} className="font-semibold text-foreground hover:text-primary">Request a new link</button>
+                <button type="button" onClick={() => showSignIn()} className="font-semibold text-foreground hover:text-primary">Back to sign in</button>
+              </div>
+            </div>
+          </section>
         ) : currentView === "login" || currentView === "register" ? (
           <section className="min-h-[calc(100vh-4rem)] px-6 py-16 flex items-center justify-center">
             <div className="w-full max-w-xl rounded-3xl border border-border bg-card p-8 shadow-sm">
@@ -1173,7 +1457,12 @@ export default function BookingApp() {
                   </>
                 ) : null}
                 <input type="email" value={authForm.email} onChange={(event) => setAuthForm((current) => ({ ...current, email: event.target.value }))} className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm" placeholder="Email address" required />
-                <input type="password" value={authForm.password} onChange={(event) => setAuthForm((current) => ({ ...current, password: event.target.value }))} className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm" placeholder="Password" required />
+                <input type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} minLength={authMode === "register" ? 8 : undefined} value={authForm.password} onChange={(event) => setAuthForm((current) => ({ ...current, password: event.target.value }))} className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm" placeholder="Password" required />
+                {authMode === "login" ? (
+                  <div className="text-right">
+                    <button type="button" onClick={showForgotPassword} className="text-sm font-semibold text-foreground hover:text-primary">Forgot password?</button>
+                  </div>
+                ) : null}
                 {authMode === "register" ? (
                   <input type="password" value={authForm.confirmPassword} onChange={(event) => setAuthForm((current) => ({ ...current, confirmPassword: event.target.value }))} className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm" placeholder="Confirm password" required />
                 ) : null}
@@ -1245,17 +1534,17 @@ export default function BookingApp() {
                           <div className="mt-4 flex flex-wrap gap-2">
                             <button onClick={() => handleAppointmentAction(appointment.id, "confirm")} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">Confirm</button>
                             <button onClick={() => handleAppointmentAction(appointment.id, "cancel")} className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">Cancel</button>
-                            <button onClick={() => handleDeleteAppointment(appointment.id)} disabled={deletionRequested} className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-60">
+                            <button onClick={() => handleDeleteAppointment(appointment.id)} disabled={loading} className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-60">
                               <span className="inline-flex items-center gap-1">
                                 <Trash2 size={14} />
-                                {deletionRequested ? "Delete requested" : "Delete"}
+                                {deletionRequested ? "Resend deletion approval" : "Delete"}
                               </span>
                             </button>
                             <button onClick={() => { setEditingAppointmentId(appointment.id); setEditDraft({ service: (appointment.serviceId ?? SERVICES.find((service) => service.name === appointment.service)?.id ?? null) as ServiceId | null, notes: appointment.notes || "" }); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Edit</button>
                             <button onClick={() => { setRescheduleAppointmentId(appointment.id); setRescheduleServiceId(appointment.serviceId ?? SERVICES.find((service) => service.name === appointment.service)?.id ?? null); setRescheduleDate(appointmentBusinessDate(appointment.dateTime)); setRescheduleTime(null); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Reschedule</button>
                           </div>
                           {deletionRequested ? (
-                            <p className="mt-3 text-sm text-muted-foreground">A deletion request has been sent to Dominic for approval. The appointment will remain until it is approved and removed.</p>
+                            <p className="mt-3 text-sm text-muted-foreground">A deletion request has been sent to Dominic for approval. The appointment will remain until it is approved and removed. You can resend the request to replace an expired link.</p>
                           ) : null}
                           {isEditing ? (
                             <div className="mt-4 rounded-2xl border border-border bg-card p-4">

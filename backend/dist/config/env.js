@@ -13,7 +13,7 @@ const rawEnvSchema = z.object({
     JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
     JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
     FRONTEND_URL: z.string().url().default("http://localhost:5173"),
-    BUSINESS_TIME_ZONE: z.string().min(1).default("America/Los_Angeles"),
+    BUSINESS_TIME_ZONE: z.string().min(1).default("Europe/London"),
     SMTP_HOST: z.string().default(""),
     SMTP_PORT: z.coerce.number().default(2525),
     SMTP_USER: z.string().default(""),
@@ -23,7 +23,6 @@ const rawEnvSchema = z.object({
     BOOKING_EMAIL_TO: z
         .union([z.string().email(), z.literal("")])
         .default("dominicolanya@gmail.com"),
-    DELETE_APPROVAL_TOKEN: z.string().default(""),
     STORAGE_PROVIDER: z.enum(["s3", "gcs"]).default("s3"),
     AWS_REGION: z.string().default("us-east-1"),
     AWS_S3_BUCKET: z.string().default(""),

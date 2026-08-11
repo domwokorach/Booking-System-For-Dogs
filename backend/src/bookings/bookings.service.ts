@@ -1,7 +1,8 @@
+import { createHash, randomBytes } from "node:crypto";
+
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -342,70 +343,38 @@ export class BookingsService {
     );
   }
 
-  async delete(user: AuthUser, id: string, approvalToken?: string) {
-    this.assertDeletionApproved(approvalToken);
-    const existing = await this.findOwnedWithUser(user.id, id);
-
-    if (!existing.deleteRequestedAt) {
-      throw new BadRequestException("Deletion request not found.");
-    }
-
-    const deleted = await this.prisma.appointment.deleteMany({
-      where: {
-        id,
-        userId: user.id,
-        deleteRequestedAt: { not: null },
-      },
-    });
-    if (deleted.count !== 1) {
-      throw new ConflictException("The deletion request is no longer valid.");
-    }
-
-    await this.email.sendBookingCancellation({
-      to: existing.user.email,
-      firstName: existing.user.firstName,
-      bookingId: existing.id,
-      service: existing.service,
-      appointmentDateTime: existing.dateTime,
-      status: toApiStatus(existing.status),
-    });
-    this.realtime.emitToUser(user.id, "appointments:deleted", {
-      appointmentId: existing.id,
-    });
-
-    return {
-      success: true,
-      bookingId: existing.id,
-      message: "Appointment deleted successfully",
-    };
-  }
-
   async requestDeletion(user: AuthUser, id: string) {
-    const existing = await this.findOwnedWithUser(user.id, id);
-    if (existing.deleteRequestedAt) {
-      return { message: "Deletion request already sent." };
-    }
+    await this.findOwnedWithUser(user.id, id);
+    const rawToken = randomBytes(32).toString("hex");
+    const tokenHash = this.hashAppointmentDeletionToken(rawToken);
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
     const updated = await this.prisma.$transaction(async (transaction) => {
       const changed = await transaction.appointment.updateMany({
-        where: { id, userId: user.id, deleteRequestedAt: null },
+        where: { id, userId: user.id },
         data: { deleteRequestedAt: new Date() },
       });
       if (changed.count !== 1) {
-        return null;
+        throw new ConflictException("The booking state changed. Please retry.");
       }
+
+      await transaction.appointmentDeletionRequest.upsert({
+        where: { appointmentId: id },
+        update: { tokenHash, expiresAt, createdAt: new Date() },
+        create: { appointmentId: id, tokenHash, expiresAt },
+      });
+
       return this.findOwnedWithUser(user.id, id, transaction);
     });
-    if (!updated) {
-      return { message: "Deletion request already sent." };
-    }
-    await this.email.sendDeletionRequest({
+    const approvalUrl = `${env.FRONTEND_URL.replace(/\/$/, "")}/?deleteAppointmentToken=${rawToken}`;
+    const emailDelivered = await this.email.sendDeletionRequest({
       to: updated.user.email,
       firstName: updated.user.firstName,
       bookingId: updated.id,
       service: updated.service,
       appointmentDateTime: updated.dateTime,
       status: toApiStatus(updated.status),
+      approvalUrl,
     });
     this.realtime.emitToUser(user.id, "appointments:updated", {
       appointmentId: updated.id,
@@ -417,7 +386,11 @@ export class BookingsService {
       success: true,
       bookingId: updated.id,
       status: toApiStatus(updated.status),
-      message: "Deletion request sent for approval",
+      expiresAt,
+      emailDelivered,
+      message: emailDelivered
+        ? "Deletion approval link sent to the administrator."
+        : "Deletion request created, but the approval email could not be delivered.",
     };
   }
 
@@ -447,11 +420,8 @@ export class BookingsService {
     return appointment;
   }
 
-  private assertDeletionApproved(approvalToken?: string): void {
-    const expected = env.DELETE_APPROVAL_TOKEN.trim();
-    if (!approvalToken?.trim() || !expected || approvalToken.trim() !== expected) {
-      throw new ForbiddenException("Deletion approval required.");
-    }
+  private hashAppointmentDeletionToken(token: string): string {
+    return createHash("sha256").update(token).digest("hex");
   }
 
   private rethrowSlotConflict(error: unknown): never {
