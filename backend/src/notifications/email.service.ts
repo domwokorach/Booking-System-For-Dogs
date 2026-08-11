@@ -7,6 +7,9 @@ import {
   sendBookingUpdateEmail,
   sendDeletionRequestEmail,
   sendPasswordResetEmail,
+  sendRefundConfirmationEmail,
+  sendRefundFailureEmail,
+  sendRefundRequestedEmail,
 } from "../services/email.service.js";
 
 export type BookingEmailData = {
@@ -19,6 +22,8 @@ export type BookingEmailData = {
   amountPence?: number;
   currency?: string;
   paymentStatus?: string;
+  refundId?: string;
+  refundFailureReason?: string | null;
 };
 
 export type AccountDeletionRequestEmailData = {
@@ -42,6 +47,18 @@ export class EmailService {
 
   sendBookingCancellation(data: BookingEmailData): Promise<boolean> {
     return sendBookingCancellationEmail(data);
+  }
+
+  sendRefundRequested(data: BookingEmailData): Promise<boolean> {
+    return sendRefundRequestedEmail(data);
+  }
+
+  sendRefundConfirmation(data: BookingEmailData): Promise<boolean> {
+    return sendRefundConfirmationEmail(data);
+  }
+
+  sendRefundFailure(data: BookingEmailData): Promise<boolean> {
+    return sendRefundFailureEmail(data);
   }
 
   sendDeletionRequest(

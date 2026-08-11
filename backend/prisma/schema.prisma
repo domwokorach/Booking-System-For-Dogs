@@ -21,11 +21,13 @@ enum AccountDeletionRequestStatus {
 }
 
 enum PaymentStatus {
-  Pending  @map("PENDING")
-  Paid     @map("PAID")
-  Failed   @map("FAILED")
-  Expired  @map("EXPIRED")
-  Refunded @map("REFUNDED")
+  Pending       @map("PENDING")
+  Paid          @map("PAID")
+  Failed        @map("FAILED")
+  Expired       @map("EXPIRED")
+  RefundPending @map("REFUND_PENDING")
+  Refunded      @map("REFUNDED")
+  RefundFailed  @map("REFUND_FAILED")
 }
 
 model User {
@@ -97,12 +99,17 @@ model Payment {
   stripeCheckoutSessionId String?       @unique
   stripePaymentIntentId   String?       @unique
   stripeInvoiceId         String?       @unique
+  stripeRefundId          String?       @unique
   amountPence             Int
   currency                String        @default("gbp")
   status                  PaymentStatus @default(Pending)
   checkoutExpiresAt       DateTime?
   paidAt                  DateTime?
   failedAt                DateTime?
+  refundRequestedAt       DateTime?
+  refundedAt              DateTime?
+  refundFailedAt          DateTime?
+  refundFailureReason     String?
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
 
