@@ -120,6 +120,12 @@ interface PaymentReturnState {
   appointmentId: string | null;
 }
 
+interface StoredSession {
+  user: UserProfile;
+  token: string;
+  refreshToken?: string;
+}
+
 const API_BASE = import.meta.env.VITE_API_URL?.trim() || "";
 const SOCKET_BASE =
   import.meta.env.VITE_SOCKET_URL?.trim() ||
@@ -127,8 +133,103 @@ const SOCKET_BASE =
   (import.meta.env.DEV ? "http://localhost:3000" : "");
 const SESSION_STORAGE_KEY = "pawside-session";
 const LAST_ACTIVITY_STORAGE_KEY = "pawside-last-activity";
+const SESSION_UPDATED_EVENT = "pawside-session-updated";
 const SESSION_INACTIVITY_TIMEOUT_MS = 5 * 60 * 1_000;
 const APPOINTMENT_REFRESH_INTERVAL_MS = 5_000;
+
+let refreshSessionRequest: Promise<string> | null = null;
+
+function readStoredSession(): StoredSession | null {
+  const saved = window.localStorage.getItem(SESSION_STORAGE_KEY);
+  if (!saved) {
+    return null;
+  }
+
+  try {
+    const session = JSON.parse(saved) as Partial<StoredSession>;
+    return session.user && typeof session.token === "string"
+      ? session as StoredSession
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredSession(session: StoredSession) {
+  window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+}
+
+function notifySessionUpdated(expired = false) {
+  window.dispatchEvent(
+    new CustomEvent(SESSION_UPDATED_EVENT, { detail: { expired } }),
+  );
+}
+
+async function refreshAccessToken(): Promise<string> {
+  if (refreshSessionRequest) {
+    return refreshSessionRequest;
+  }
+
+  refreshSessionRequest = (async () => {
+    const session = readStoredSession();
+    if (!session?.refreshToken) {
+      throw new Error("Your session has expired. Please sign in again.");
+    }
+
+    const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: session.refreshToken }),
+    });
+    const data = await response.json().catch(() => null) as {
+      accessToken?: string;
+      refreshToken?: string;
+    } | null;
+    if (!response.ok || !data?.accessToken || !data.refreshToken) {
+      throw new Error("Your session has expired. Please sign in again.");
+    }
+
+    saveStoredSession({
+      ...session,
+      token: data.accessToken,
+      refreshToken: data.refreshToken,
+    });
+    notifySessionUpdated();
+    return data.accessToken;
+  })()
+    .catch((error: unknown) => {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+      window.localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
+      window.setTimeout(() => notifySessionUpdated(true), 0);
+      throw error;
+    })
+    .finally(() => {
+      refreshSessionRequest = null;
+    });
+
+  return refreshSessionRequest;
+}
+
+async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  const session = readStoredSession();
+  if (!session) {
+    throw new Error("Your session has expired. Please sign in again.");
+  }
+
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${session.token}`);
+  const response = await fetch(input, { ...init, headers });
+  if (response.status !== 401) {
+    return response;
+  }
+
+  const accessToken = await refreshAccessToken();
+  headers.set("Authorization", `Bearer ${accessToken}`);
+  return fetch(input, { ...init, headers });
+}
 
 const MONTHS = [
   "January",
@@ -504,21 +605,40 @@ export default function BookingApp() {
       setSectionTarget(initialSection);
     }
 
-    const saved = window.localStorage.getItem(SESSION_STORAGE_KEY);
-    if (!saved) {
+    const savedSession = readStoredSession();
+    if (!savedSession) {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
       return;
     }
 
-    try {
-      const parsed = JSON.parse(saved) as { user: UserProfile; token: string };
-      setUser(parsed.user);
-      setToken(parsed.token);
-      if (!deletionActionView && !isPasswordResetPath && !initialSection) {
-        setCurrentView("dashboard");
-      }
-    } catch {
-      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    setUser(savedSession.user);
+    setToken(savedSession.token);
+    if (!deletionActionView && !isPasswordResetPath && !initialSection) {
+      setCurrentView("dashboard");
     }
+  }, []);
+
+  useEffect(() => {
+    function handleSessionUpdated(event: Event) {
+      const session = readStoredSession();
+      if (session) {
+        setUser(session.user);
+        setToken(session.token);
+        return;
+      }
+
+      setUser(null);
+      setToken(null);
+      setAppointments([]);
+      setCurrentView("login");
+      const expired = (event as CustomEvent<{ expired?: boolean }>).detail?.expired;
+      if (expired) {
+        setFeedback("Your session expired. Please sign in again.");
+      }
+    }
+
+    window.addEventListener(SESSION_UPDATED_EVENT, handleSessionUpdated);
+    return () => window.removeEventListener(SESSION_UPDATED_EVENT, handleSessionUpdated);
   }, []);
 
   useEffect(() => {
@@ -589,9 +709,8 @@ export default function BookingApp() {
     async function resolvePaymentReturn() {
       try {
         if (paymentReturn.result === "success" && paymentReturn.sessionId) {
-          const response = await fetch(
+          const response = await authenticatedFetch(
             `${API_BASE}/api/payments/session/${encodeURIComponent(paymentReturn.sessionId)}`,
-            { headers: { Authorization: `Bearer ${token}` } },
           );
           const data = (await response.json()) as {
             paymentStatus?: string;
@@ -613,11 +732,10 @@ export default function BookingApp() {
           paymentReturn.result === "cancelled" &&
           paymentReturn.appointmentId
         ) {
-          const response = await fetch(
+          const response = await authenticatedFetch(
             `${API_BASE}/api/payments/appointments/${encodeURIComponent(paymentReturn.appointmentId)}/cancel`,
             {
               method: "POST",
-              headers: { Authorization: `Bearer ${token}` },
             },
           );
           const data = (await response.json()) as { message?: string };
@@ -791,11 +909,7 @@ export default function BookingApp() {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/appointments/mine`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authenticatedFetch(`${API_BASE}/api/appointments/mine`);
       if (!response.ok) {
         throw new Error("Unable to load appointments.");
       }
@@ -812,20 +926,16 @@ export default function BookingApp() {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/users/me`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await authenticatedFetch(`${API_BASE}/api/users/me`);
       if (!response.ok) {
         throw new Error("Unable to load account.");
       }
 
       const nextUser = (await response.json()) as UserProfile;
-      window.localStorage.setItem(
-        SESSION_STORAGE_KEY,
-        JSON.stringify({ user: nextUser, token }),
-      );
+      const session = readStoredSession();
+      if (session) {
+        saveStoredSession({ ...session, user: nextUser });
+      }
       setUser(nextUser);
     } catch {
       // Keep the saved profile available during a temporary API interruption.
@@ -863,9 +973,8 @@ export default function BookingApp() {
     try {
       const uploadBody = new FormData();
       uploadBody.append("file", reviewAvatar);
-      const uploadResponse = await fetch(`${API_BASE}/api/files/upload`, {
+      const uploadResponse = await authenticatedFetch(`${API_BASE}/api/files/upload`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
         body: uploadBody,
       });
       const upload = await uploadResponse.json().catch(() => null) as { url?: string; message?: string } | null;
@@ -873,11 +982,10 @@ export default function BookingApp() {
         throw new Error(upload?.message || "Unable to upload your profile picture.");
       }
 
-      const response = await fetch(`${API_BASE}/api/reviews`, {
+      const response = await authenticatedFetch(`${API_BASE}/api/reviews`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           appointmentId: reviewingAppointmentId,
@@ -920,8 +1028,16 @@ export default function BookingApp() {
     }
   }
 
-  function persistSession(nextUser: UserProfile, nextToken: string) {
-    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ user: nextUser, token: nextToken }));
+  function persistSession(
+    nextUser: UserProfile,
+    nextToken: string,
+    nextRefreshToken: string,
+  ) {
+    saveStoredSession({
+      user: nextUser,
+      token: nextToken,
+      refreshToken: nextRefreshToken,
+    });
     window.localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(Date.now()));
     setUser(nextUser);
     setToken(nextToken);
@@ -949,11 +1065,10 @@ export default function BookingApp() {
     setFeedback(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/users/me/delete-request`, {
+      const response = await authenticatedFetch(`${API_BASE}/api/users/me/delete-request`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(deleteAccountForm),
       });
@@ -1126,11 +1241,15 @@ export default function BookingApp() {
         throw new Error(data?.message || "Unable to reach the authentication service. Please try again.");
       }
 
-      if (!data?.user || !data?.token) {
+      if (!data?.user || !data?.token || !data?.refreshToken) {
         throw new Error("The authentication service returned an invalid response.");
       }
 
-      persistSession(data.user as UserProfile, data.token as string);
+      persistSession(
+        data.user as UserProfile,
+        data.token as string,
+        data.refreshToken as string,
+      );
       setFeedback(authMode === "login" ? "Welcome back!" : "Your account is ready.");
       setAuthForm({
         firstName: "",
@@ -1282,11 +1401,10 @@ export default function BookingApp() {
 
     try {
       const appointmentDateTime = resolveAppointmentDateTime(selectedDate, booking.time);
-      const response = await fetch(`${API_BASE}/api/appointments`, {
+      const response = await authenticatedFetch(`${API_BASE}/api/appointments`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           dateTime: appointmentDateTime,
@@ -1328,9 +1446,8 @@ export default function BookingApp() {
         requiresPayment
           ? `${API_BASE}/api/payments/checkout/${appointmentId}`
           : `${API_BASE}/api/appointments/${appointmentId}/${action}`;
-      const response = await fetch(endpoint, {
+      const response = await authenticatedFetch(endpoint, {
         method: requiresPayment ? "POST" : "PATCH",
-        headers: { Authorization: `Bearer ${token}` },
       });
       const data = (await response.json()) as AppointmentMutationResponse;
       if (!response.ok) {
@@ -1369,9 +1486,8 @@ export default function BookingApp() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/appointments/${appointmentId}/delete-request`, {
+      const response = await authenticatedFetch(`${API_BASE}/api/appointments/${appointmentId}/delete-request`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
       if (!response.ok) {
@@ -1394,11 +1510,10 @@ export default function BookingApp() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/appointments/${appointmentId}`, {
+      const response = await authenticatedFetch(`${API_BASE}/api/appointments/${appointmentId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           service: editDraft.service || undefined,
@@ -1426,11 +1541,10 @@ export default function BookingApp() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/appointments/${appointmentId}/reschedule`, {
+      const response = await authenticatedFetch(`${API_BASE}/api/appointments/${appointmentId}/reschedule`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           dateTime: resolveAppointmentDateTime(rescheduleDate, rescheduleTime),
@@ -1465,9 +1579,8 @@ export default function BookingApp() {
 
   async function fetchRescheduleSlots(dateKey: string, appointmentId: string) {
     try {
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `${API_BASE}/api/appointments/${encodeURIComponent(appointmentId)}/slots?date=${dateKey}`,
-        { headers: { Authorization: `Bearer ${token}` } },
       );
       if (!response.ok) {
         throw new Error("Unable to load reschedule slots.");
