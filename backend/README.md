@@ -115,7 +115,7 @@ host, keep PostgreSQL at `localhost`:
 
 ```env
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/dog_booking?schema=public"
-PORT=4000
+PORT=3000
 CLIENT_ORIGIN="http://localhost:5173"
 FRONTEND_URL="http://localhost:5173"
 BUSINESS_TIME_ZONE="Europe/London"
@@ -125,20 +125,22 @@ JWT_SECRET="replace-with-at-least-32-random-characters"
 Start PostgreSQL, apply development migrations, and start NestJS:
 
 ```bash
-pnpm --dir backend run db:start
-pnpm --dir backend run prisma:migrate
-pnpm --dir backend run dev
+npm --prefix backend run db:start
+npm --prefix backend run prisma:migrate
+npm --prefix backend run start:dev
 ```
 
-The API is available at `http://localhost:4000`. Confirm it is ready with:
+In a second terminal, start Vite from the repository root with `npm run dev`.
+
+The API is available at `http://localhost:3000`. Confirm it is ready with:
 
 ```bash
-curl http://localhost:4000/health
+curl http://localhost:3000/health
 ```
 
 The Vite frontend runs on `http://localhost:5173`. In development, `/api`
-requests are proxied to port 4000, while Socket.IO connects directly to port
-4000.
+requests are proxied to port 3000, while Socket.IO connects directly to port
+3000.
 
 ## Stripe Checkout
 
@@ -160,8 +162,9 @@ ignored `.env.local` file:
 VITE_STRIPE_PUBLISHABLE_KEY="pk_test_..."
 ```
 
-Hosted Checkout currently redirects to the server-created Checkout Session URL,
-so Stripe.js and the publishable key are not required for the payment flow. The
+Hosted Checkout redirects to the server-created Checkout Session URL and returns
+successful payments to `/payment-success`, so Stripe.js and the publishable key
+are not required for the payment flow. The
 publishable key is configured for future client-side Stripe.js features only;
 the secret key must remain in `backend/.env`.
 
@@ -169,7 +172,7 @@ For local webhook delivery, run the Stripe CLI in a separate terminal and copy
 the displayed `whsec_...` signing secret into `STRIPE_WEBHOOK_SECRET`:
 
 ```bash
-stripe listen --forward-to localhost:4000/api/payments/webhook
+stripe listen --forward-to http://localhost:3000/api/payments/webhook
 ```
 
 An authenticated customer starts or resumes Checkout with
@@ -177,6 +180,26 @@ An authenticated customer starts or resumes Checkout with
 but that return page is informational only: only a signature-verified Stripe
 webhook changes the payment to `PAID` and the appointment to `CONFIRMED`. The
 confirmation email is sent after that database transaction succeeds.
+
+This schema keeps appointment and payment state in normalized tables. Inspect
+the latest payment for each appointment with:
+
+```sql
+SELECT
+  a.id,
+  a.status,
+  p.status AS "paymentStatus",
+  p."stripeCheckoutSessionId"
+FROM "Appointment" AS a
+LEFT JOIN LATERAL (
+  SELECT status, "stripeCheckoutSessionId"
+  FROM "Payment"
+  WHERE "appointmentId" = a.id
+  ORDER BY "createdAt" DESC
+  LIMIT 1
+) AS p ON TRUE
+ORDER BY a."createdAt" DESC;
+```
 
 Apply the committed payment migrations before testing:
 
@@ -209,7 +232,7 @@ docker compose up --build
 
 Compose waits for PostgreSQL to pass its health check before starting the API.
 The backend container uses the Compose hostname `postgres`, publishes port
-4000, applies production migrations, and then starts NestJS. Do not use
+3000, applies production migrations, and then starts NestJS. Do not use
 `localhost` as the database hostname from inside the backend container.
 
 ### Develop with Compose Watch
@@ -262,7 +285,7 @@ pnpm --dir backend run start
 ```
 
 Docker and Render use the same sequence. The server listens on `0.0.0.0` and
-the configured `PORT`, which remains 4000 locally but can be supplied by the
+the configured `PORT`, which remains 3000 locally but can be supplied by the
 hosting platform.
 
 `api/[...route].ts` is a cached NestJS adapter for HTTP-only serverless

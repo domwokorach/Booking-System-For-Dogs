@@ -54,11 +54,11 @@ services:
       - .env
     environment:
       NODE_ENV: development
-      PORT: 4000
+      PORT: 3000
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/dog_booking
       CLIENT_ORIGIN: http://localhost:5173
     ports:
-      - "4000:4000"
+      - "3000:3000"
     volumes:
       - uploads_data:/app/uploads
     develop:

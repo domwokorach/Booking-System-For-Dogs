@@ -124,7 +124,7 @@ const API_BASE = import.meta.env.VITE_API_URL?.trim() || "";
 const SOCKET_BASE =
   import.meta.env.VITE_SOCKET_URL?.trim() ||
   API_BASE ||
-  (import.meta.env.DEV ? "http://localhost:4000" : "");
+  (import.meta.env.DEV ? "http://localhost:3000" : "");
 const SESSION_STORAGE_KEY = "pawside-session";
 const LAST_ACTIVITY_STORAGE_KEY = "pawside-last-activity";
 const SESSION_INACTIVITY_TIMEOUT_MS = 5 * 60 * 1_000;
@@ -393,7 +393,12 @@ export default function BookingApp() {
   const [bookingEmailDelivered, setBookingEmailDelivered] = useState<boolean | null>(null);
   const [paymentReturn, setPaymentReturn] = useState<PaymentReturnState | null>(() => {
     const params = new URLSearchParams(window.location.search);
-    const result = params.get("payment");
+    const path = window.location.pathname.replace(/\/$/, "");
+    const result = path === "/payment-success"
+      ? "success"
+      : path === "/payment-cancelled"
+        ? "cancelled"
+        : params.get("payment");
     if (result !== "success" && result !== "cancelled") {
       return null;
     }
@@ -461,7 +466,10 @@ export default function BookingApp() {
     const deletionToken = searchParams.get("deleteAccountToken");
     const cancellationToken = searchParams.get("cancelDeleteAccountToken");
     const initialAppointmentDeletionToken = searchParams.get("deleteAppointmentToken");
-    if (searchParams.has("payment")) {
+    if (
+      searchParams.has("payment") ||
+      /\/payment-(success|cancelled)\/?$/.test(window.location.pathname)
+    ) {
       window.localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(Date.now()));
     }
     const deletionActionView: CurrentView | null = cancellationToken
@@ -637,7 +645,10 @@ export default function BookingApp() {
           url.searchParams.delete("payment");
           url.searchParams.delete("session_id");
           url.searchParams.delete("appointmentId");
-          window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+          const pathname = /\/payment-(success|cancelled)\/?$/.test(url.pathname)
+            ? "/"
+            : url.pathname;
+          window.history.replaceState({}, "", `${pathname}${url.search}${url.hash}`);
           setPaymentReturn(null);
         }
       }

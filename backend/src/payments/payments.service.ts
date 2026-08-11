@@ -7,6 +7,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { AppointmentStatus, PaymentStatus } from "@prisma/client";
+import { randomBytes } from "node:crypto";
 import Stripe from "stripe";
 
 import type { AuthUser } from "../auth/auth.types.js";
@@ -93,11 +94,13 @@ export class PaymentsService {
       const expiresAt = Math.floor(Date.now() / 1000) + CHECKOUT_EXPIRY_SECONDS;
       const metadata = {
         appointmentId: input.appointmentId,
+        bookingId: input.appointmentId,
         paymentId: payment.id,
         userId: input.userId,
       };
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
+        integration_identifier: `pawside_checkout_${randomLetterSuffix()}`,
         client_reference_id: input.appointmentId,
         customer_email: input.customerEmail,
         billing_address_collection: "required",
@@ -116,8 +119,8 @@ export class PaymentsService {
         ],
         metadata,
         payment_intent_data: { metadata },
-        success_url: `${frontendUrl}/?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${frontendUrl}/?payment=cancelled&appointmentId=${encodeURIComponent(input.appointmentId)}`,
+        success_url: `${frontendUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${frontendUrl}/payment-cancelled?appointmentId=${encodeURIComponent(input.appointmentId)}`,
         expires_at: expiresAt,
         submit_type: "book",
       });
@@ -443,4 +446,10 @@ export class PaymentsService {
     }
     return this.stripe;
   }
+}
+
+function randomLetterSuffix(): string {
+  return Array.from(randomBytes(8), (byte) =>
+    String.fromCharCode(97 + (byte % 26)),
+  ).join("");
 }
