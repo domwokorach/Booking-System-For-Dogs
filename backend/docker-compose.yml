@@ -23,6 +23,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: dog-booking-backend
+    command: ["sh", "-c", "npx prisma migrate deploy && npm run dev"]
     restart: unless-stopped
     depends_on:
       postgres:
@@ -36,6 +37,20 @@ services:
       CLIENT_ORIGIN: http://localhost:5173
     ports:
       - "4000:4000"
+    develop:
+      watch:
+        - action: sync
+          path: ./src
+          target: /app/src
+          initial_sync: true
+        - action: rebuild
+          path: ./package.json
+        - action: rebuild
+          path: ./prisma
+        - action: rebuild
+          path: ./tsconfig.json
+        - action: rebuild
+          path: ./Dockerfile
 
 volumes:
   postgres_data:

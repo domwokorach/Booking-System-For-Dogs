@@ -154,6 +154,27 @@ The backend container uses the Compose hostname `postgres`, publishes port
 4000, applies production migrations, and then starts NestJS. Do not use
 `localhost` as the database hostname from inside the backend container.
 
+### Develop with Compose Watch
+
+Compose Watch requires Docker Compose 2.22.0 or later. Check your installed
+version, then start the backend and PostgreSQL from the `backend` directory:
+
+```bash
+docker compose version
+docker compose up --watch
+```
+
+Changes under `src/` are synchronized into the running backend container and
+picked up by the NestJS `tsx` development watcher. Changes to `package.json`,
+`prisma/`, `tsconfig.json`, or the Dockerfile rebuild and replace the backend
+container because they affect dependencies, generated Prisma Client code,
+migrations, compilation, or the image itself. The `node_modules/` directory is
+never synchronized from the host.
+
+Compose Watch needs `stat`, `mkdir`, and `rmdir` in the image and write access
+to each synchronization target. The Node Alpine image supplies those commands,
+and this development container can write to `/app/src`.
+
 Stop the containers without deleting database data:
 
 ```bash

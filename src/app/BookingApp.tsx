@@ -74,6 +74,15 @@ interface AppointmentRecord {
 }
 
 interface AppointmentMutationResponse {
+  id?: string;
+  serviceId?: string | null;
+  dateTime?: string;
+  status?: string;
+  service?: string | null;
+  notes?: string | null;
+  deleteRequestedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
   notificationRecipient?: string;
   message?: string;
 }
@@ -201,6 +210,41 @@ function formatAppointmentDate(value: string): string {
   }).format(new Date(value));
 }
 
+function businessDateKey(value: Date): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: BUSINESS_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+      .formatToParts(value)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function formatNextAppointment(value: string): string {
+  const appointmentDate = new Date(value);
+  const date =
+    businessDateKey(appointmentDate) === businessDateKey(new Date())
+      ? "Today"
+      : new Intl.DateTimeFormat("en-US", {
+          timeZone: BUSINESS_TIME_ZONE,
+          month: "short",
+          day: "numeric",
+        }).format(appointmentDate);
+  const time = new Intl.DateTimeFormat("en-US", {
+    timeZone: BUSINESS_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(appointmentDate);
+
+  return `${date}, ${time}`;
+}
+
 function appointmentBusinessDate(value: string): Date {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
@@ -274,6 +318,23 @@ export default function BookingApp() {
         : null;
 
   const calDays = useMemo(() => buildCalendarDays(currentMonth), [currentMonth]);
+  const nextAppointment = useMemo(
+    () =>
+      appointments
+        .filter(
+          (appointment) =>
+            appointment.status.toLowerCase() !== "cancelled" &&
+            new Date(appointment.dateTime).getTime() >= Date.now(),
+        )
+        .sort(
+          (left, right) =>
+            new Date(left.dateTime).getTime() - new Date(right.dateTime).getTime(),
+        )[0] ?? null,
+    [appointments],
+  );
+  const nextAppointmentStatus = nextAppointment
+    ? getStatusStyles(nextAppointment.status)
+    : null;
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -780,6 +841,22 @@ export default function BookingApp() {
 
       if (action === "confirm" && data.notificationRecipient) {
         setBookingNotificationRecipient(data.notificationRecipient);
+      }
+
+      if (data.id && data.dateTime && data.status) {
+        setAppointments((current) =>
+          current.map((appointment) =>
+            appointment.id === data.id
+              ? {
+                  ...appointment,
+                  ...data,
+                  id: data.id,
+                  dateTime: data.dateTime,
+                  status: data.status,
+                }
+              : appointment,
+          ),
+        );
       }
 
       setFeedback(
@@ -1332,19 +1409,35 @@ export default function BookingApp() {
               <div className="relative order-1 md:order-2 min-h-[55vw] md:min-h-0 bg-stone-200 overflow-hidden">
                 <img src="https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=900&h=1100&fit=crop&auto=format" alt="Happy golden retriever" className="absolute inset-0 w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
-                <div className="absolute bottom-8 left-8 bg-white rounded-2xl shadow-2xl p-5 max-w-[220px]">
+                <div
+                  className="absolute bottom-8 left-8 bg-white rounded-2xl shadow-2xl p-5 max-w-[220px]"
+                  role="status"
+                  aria-live="polite"
+                >
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-9 h-9 bg-emerald-100 rounded-full flex items-center justify-center shrink-0">
                       <Check size={15} className="text-emerald-600" />
                     </div>
                     <div>
                       <div className="text-[11px] text-muted-foreground">Next appointment</div>
-                      <div className="text-sm font-semibold text-foreground">Today, 2:00 PM</div>
+                      <div className="text-sm font-semibold text-foreground">
+                        {nextAppointment
+                          ? formatNextAppointment(nextAppointment.dateTime)
+                          : "Today, 2:00 PM"}
+                      </div>
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-                    Confirmed — Bella
+                    <div
+                      className={`w-2 h-2 rounded-full shrink-0 ${
+                        nextAppointmentStatus?.label === "Confirmed"
+                          ? "bg-emerald-400"
+                          : nextAppointmentStatus?.label === "Rescheduled"
+                            ? "bg-sky-400"
+                            : "bg-amber-400"
+                      }`}
+                    />
+                    {nextAppointmentStatus?.label ?? "Confirmed"} — Bella
                   </div>
                 </div>
               </div>
