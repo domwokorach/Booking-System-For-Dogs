@@ -22,7 +22,7 @@ Use its pooled production connection string as `DATABASE_URL`. Never use a
 Apply the committed Prisma migrations before serving production traffic:
 
 ```bash
-npm --prefix backend run prisma:migrate:deploy
+pnpm --dir backend run prisma:migrate:deploy
 ```
 
 Run this from CI/CD with the production `DATABASE_URL`. The backend's

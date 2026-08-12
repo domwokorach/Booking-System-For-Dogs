@@ -20,8 +20,8 @@ services:
 
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: backend/Dockerfile
     container_name: dog-booking-backend
     command:
       - sh
@@ -33,9 +33,9 @@ services:
           kill "$$compiler_pid" "$$server_pid" 2>/dev/null || true
           wait "$$compiler_pid" "$$server_pid" 2>/dev/null || true
         }
-        npx prisma migrate deploy
-        npm run build
-        npx tsc --watch --preserveWatchOutput &
+        pnpm exec prisma migrate deploy
+        pnpm run build
+        pnpm exec tsc --watch --preserveWatchOutput &
         compiler_pid=$$!
         node --watch dist/main.js &
         server_pid=$$!
@@ -69,6 +69,8 @@ services:
           initial_sync: true
         - action: rebuild
           path: ./package.json
+        - action: rebuild
+          path: ../pnpm-lock.yaml
         - action: rebuild
           path: ./prisma
         - action: rebuild

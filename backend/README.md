@@ -125,12 +125,12 @@ JWT_SECRET="replace-with-at-least-32-random-characters"
 Start PostgreSQL, apply development migrations, and start NestJS:
 
 ```bash
-npm --prefix backend run db:start
-npm --prefix backend run prisma:migrate
-npm --prefix backend run start:dev
+pnpm --dir backend run db:start
+pnpm --dir backend run prisma:migrate
+pnpm --dir backend run start:dev
 ```
 
-In a second terminal, start Vite from the repository root with `npm run dev`.
+In a second terminal, start Vite from the repository root with `pnpm run dev`.
 
 The API is available at `http://localhost:3000`. Confirm it is ready with:
 
