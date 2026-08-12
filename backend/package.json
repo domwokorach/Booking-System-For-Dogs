@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "postinstall": "npm run prisma:generate",
+    "postinstall": "pnpm run prisma:generate",
     "dev": "nest start --watch",
     "start:dev": "nest start --watch",
     "build": "tsc -p tsconfig.json",

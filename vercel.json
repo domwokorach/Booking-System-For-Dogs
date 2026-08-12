@@ -3,12 +3,12 @@
     "frontend": {
       "root": ".",
       "framework": "vite",
-      "installCommand": "pnpm install --no-frozen-lockfile"
+      "installCommand": "pnpm install --frozen-lockfile"
     },
     "backend": {
       "root": "backend",
       "entrypoint": "src/main.ts",
-      "installCommand": "pnpm install --no-frozen-lockfile"
+      "installCommand": "pnpm install --frozen-lockfile"
     }
   },
   "rewrites": [
