@@ -2,11 +2,13 @@
   "services": {
     "frontend": {
       "root": ".",
-      "framework": "vite"
+      "framework": "vite",
+      "installCommand": "pnpm install --no-frozen-lockfile"
     },
     "backend": {
       "root": "backend",
-      "entrypoint": "src/main.ts"
+      "entrypoint": "src/main.ts",
+      "installCommand": "pnpm install --no-frozen-lockfile"
     }
   },
   "rewrites": [
