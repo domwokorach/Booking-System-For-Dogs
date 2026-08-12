@@ -1,5 +1,54 @@
 export const BUSINESS_TIME_ZONE =
-  import.meta.env.VITE_BUSINESS_TIME_ZONE?.trim() || "Europe/London";
+  import.meta.env?.VITE_BUSINESS_TIME_ZONE?.trim() || "Europe/London";
+
+function getTimeZoneOffset(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts
+      .filter(({ type }) => type !== "literal")
+      .map(({ type, value }) => [type, Number(value)]),
+  );
+
+  return Date.UTC(
+    values.year,
+    values.month - 1,
+    values.day,
+    values.hour,
+    values.minute,
+    values.second,
+  ) - date.getTime();
+}
+
+function businessDateTimeToIso(
+  date: Date,
+  hours: number,
+  minutes: number,
+): string {
+  const wallClockTime = Date.UTC(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    hours,
+    minutes,
+  );
+  const initialOffset = getTimeZoneOffset(
+    new Date(wallClockTime),
+    BUSINESS_TIME_ZONE,
+  );
+  const initialCandidate = new Date(wallClockTime - initialOffset);
+  const finalOffset = getTimeZoneOffset(initialCandidate, BUSINESS_TIME_ZONE);
+
+  return new Date(wallClockTime - finalOffset).toISOString();
+}
 
 export function resolveAppointmentDateTime(date: Date, slot: string): string {
   const normalizedSlot = slot.trim();
@@ -18,9 +67,7 @@ export function resolveAppointmentDateTime(date: Date, slot: string): string {
     hours = 0;
   }
 
-  const next = new Date(date);
-  next.setHours(hours, minutes, 0, 0);
-  return next.toISOString();
+  return businessDateTimeToIso(date, hours, minutes);
 }
 
 export function formatSlotLabel(slot: string): string {

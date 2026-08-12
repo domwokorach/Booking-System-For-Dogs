@@ -1,4 +1,6 @@
 {
+    "jest.jestCommandLine": "pnpm test --",
+    "jest.rootPath": ".",
     "cSpell.words": [
         "paramtypes",
         "Pawside",
