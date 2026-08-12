@@ -137,10 +137,10 @@ interface StoredSession {
   refreshToken?: string;
 }
 
-const API_BASE = import.meta.env.VITE_API_URL?.trim() || "";
+const API_URL = (import.meta.env.VITE_API_URL?.trim() || "").replace(/\/+$/, "");
 const SOCKET_BASE =
   import.meta.env.VITE_SOCKET_URL?.trim() ||
-  API_BASE ||
+  API_URL ||
   (import.meta.env.DEV ? "http://localhost:3000" : "");
 const SESSION_STORAGE_KEY = "pawside-session";
 const LAST_ACTIVITY_STORAGE_KEY = "pawside-last-activity";
@@ -187,7 +187,7 @@ async function refreshAccessToken(): Promise<string> {
       throw new Error("Your session has expired. Please sign in again.");
     }
 
-    const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+    const response = await fetch(`${API_URL}/api/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken: session.refreshToken }),
@@ -361,7 +361,7 @@ function resolveAvatarUrl(value: string): string {
     return value;
   }
 
-  const assetBase = API_BASE || SOCKET_BASE;
+  const assetBase = API_URL || SOCKET_BASE;
   return `${assetBase.replace(/\/$/, "")}${value.startsWith("/") ? value : `/${value}`}`;
 }
 
@@ -732,7 +732,7 @@ export default function BookingApp() {
       try {
         if (paymentReturn.result === "success" && paymentReturn.sessionId) {
           const response = await authenticatedFetch(
-            `${API_BASE}/api/payments/session/${encodeURIComponent(paymentReturn.sessionId)}`,
+            `${API_URL}/api/payments/session/${encodeURIComponent(paymentReturn.sessionId)}`,
           );
           const data = (await response.json()) as {
             paymentStatus?: string;
@@ -755,7 +755,7 @@ export default function BookingApp() {
           paymentReturn.appointmentId
         ) {
           const response = await authenticatedFetch(
-            `${API_BASE}/api/payments/appointments/${encodeURIComponent(paymentReturn.appointmentId)}/cancel`,
+            `${API_URL}/api/payments/appointments/${encodeURIComponent(paymentReturn.appointmentId)}/cancel`,
             {
               method: "POST",
             },
@@ -931,7 +931,7 @@ export default function BookingApp() {
     }
 
     try {
-      const response = await authenticatedFetch(`${API_BASE}/api/appointments/mine`);
+      const response = await authenticatedFetch(`${API_URL}/api/appointments/mine`);
       if (!response.ok) {
         throw new Error("Unable to load appointments.");
       }
@@ -948,7 +948,7 @@ export default function BookingApp() {
     }
 
     try {
-      const response = await authenticatedFetch(`${API_BASE}/api/users/me`);
+      const response = await authenticatedFetch(`${API_URL}/api/users/me`);
       if (!response.ok) {
         throw new Error("Unable to load account.");
       }
@@ -966,7 +966,7 @@ export default function BookingApp() {
 
   async function loadReviews() {
     try {
-      const response = await fetch(`${API_BASE}/api/reviews`);
+      const response = await fetch(`${API_URL}/api/reviews`);
       if (!response.ok) {
         throw new Error("Unable to load reviews.");
       }
@@ -995,7 +995,7 @@ export default function BookingApp() {
     try {
       const uploadBody = new FormData();
       uploadBody.append("file", reviewAvatar);
-      const uploadResponse = await authenticatedFetch(`${API_BASE}/api/files/upload`, {
+      const uploadResponse = await authenticatedFetch(`${API_URL}/api/files/upload`, {
         method: "POST",
         body: uploadBody,
       });
@@ -1004,7 +1004,7 @@ export default function BookingApp() {
         throw new Error(upload?.message || "Unable to upload your profile picture.");
       }
 
-      const response = await authenticatedFetch(`${API_BASE}/api/reviews`, {
+      const response = await authenticatedFetch(`${API_URL}/api/reviews`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1039,7 +1039,7 @@ export default function BookingApp() {
 
   async function fetchAvailableSlots(dateKey: string, serviceId: ServiceId) {
     try {
-      const response = await fetch(`${API_BASE}/api/slots?serviceId=${encodeURIComponent(serviceId)}&date=${dateKey}`);
+      const response = await fetch(`${API_URL}/api/slots?serviceId=${encodeURIComponent(serviceId)}&date=${dateKey}`);
       if (!response.ok) {
         throw new Error("Unable to load slots.");
       }
@@ -1087,7 +1087,7 @@ export default function BookingApp() {
     setFeedback(null);
 
     try {
-      const response = await authenticatedFetch(`${API_BASE}/api/users/me/delete-request`, {
+      const response = await authenticatedFetch(`${API_URL}/api/users/me/delete-request`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1120,7 +1120,7 @@ export default function BookingApp() {
     setFeedback(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/users/delete-account/confirm`, {
+      const response = await fetch(`${API_URL}/api/users/delete-account/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: accountDeletionToken }),
@@ -1156,7 +1156,7 @@ export default function BookingApp() {
     setFeedback(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/users/delete-account/cancel`, {
+      const response = await fetch(`${API_URL}/api/users/delete-account/cancel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: accountDeletionToken }),
@@ -1195,7 +1195,7 @@ export default function BookingApp() {
     setAppointmentDeletionCompleted(false);
 
     try {
-      const response = await fetch(`${API_BASE}/api/appointments/delete/confirm`, {
+      const response = await fetch(`${API_URL}/api/appointments/delete/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: appointmentDeletionToken }),
@@ -1249,7 +1249,7 @@ export default function BookingApp() {
               password: authForm.password,
             };
 
-      const response = await fetch(`${API_BASE}${endpoint}`, {
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -1317,7 +1317,7 @@ export default function BookingApp() {
     setFeedback(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+      const response = await fetch(`${API_URL}/api/auth/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: authForm.email }),
@@ -1356,7 +1356,7 @@ export default function BookingApp() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
+      const response = await fetch(`${API_URL}/api/auth/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1423,7 +1423,7 @@ export default function BookingApp() {
 
     try {
       const appointmentDateTime = resolveAppointmentDateTime(selectedDate, booking.time);
-      const response = await authenticatedFetch(`${API_BASE}/api/appointments`, {
+      const response = await authenticatedFetch(`${API_URL}/api/appointments`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1478,8 +1478,8 @@ export default function BookingApp() {
         selectedAppointment?.status.toLowerCase() === "pending";
       const endpoint =
         requiresPayment
-          ? `${API_BASE}/api/payments/checkout/${appointmentId}`
-          : `${API_BASE}/api/appointments/${appointmentId}/${action}`;
+          ? `${API_URL}/api/payments/checkout/${appointmentId}`
+          : `${API_URL}/api/appointments/${appointmentId}/${action}`;
       const response = await authenticatedFetch(endpoint, {
         method: requiresPayment ? "POST" : "PATCH",
       });
@@ -1530,7 +1530,7 @@ export default function BookingApp() {
 
     setLoading(true);
     try {
-      const response = await authenticatedFetch(`${API_BASE}/api/appointments/${appointmentId}/delete-request`, {
+      const response = await authenticatedFetch(`${API_URL}/api/appointments/${appointmentId}/delete-request`, {
         method: "POST",
       });
       const data = await response.json();
@@ -1554,7 +1554,7 @@ export default function BookingApp() {
 
     setLoading(true);
     try {
-      const response = await authenticatedFetch(`${API_BASE}/api/appointments/${appointmentId}`, {
+      const response = await authenticatedFetch(`${API_URL}/api/appointments/${appointmentId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -1585,7 +1585,7 @@ export default function BookingApp() {
 
     setLoading(true);
     try {
-      const response = await authenticatedFetch(`${API_BASE}/api/appointments/${appointmentId}/reschedule`, {
+      const response = await authenticatedFetch(`${API_URL}/api/appointments/${appointmentId}/reschedule`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -1624,7 +1624,7 @@ export default function BookingApp() {
   async function fetchRescheduleSlots(dateKey: string, appointmentId: string) {
     try {
       const response = await authenticatedFetch(
-        `${API_BASE}/api/appointments/${encodeURIComponent(appointmentId)}/slots?date=${dateKey}`,
+        `${API_URL}/api/appointments/${encodeURIComponent(appointmentId)}/slots?date=${dateKey}`,
       );
       if (!response.ok) {
         throw new Error("Unable to load reschedule slots.");

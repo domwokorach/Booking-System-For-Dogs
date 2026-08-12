@@ -10,7 +10,8 @@ repository:
 
 The frontend lives at the repository root; it does not need to be moved into a
 new `frontend/` directory. Vercel reads the root `vercel.json` for Vite SPA
-fallback routing and `backend/vercel.json` for the NestJS project.
+fallback routing. The backend uses Vercel's zero-configuration NestJS detection
+from `backend/src/main.ts`.
 
 ## 1. Create production PostgreSQL
 
