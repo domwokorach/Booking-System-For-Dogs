@@ -51,15 +51,15 @@ export function CookieConsentPopup({
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[100] p-4 sm:p-6">
+    <div className="fixed inset-x-0 bottom-0 z-[100] max-w-full overflow-x-hidden p-3 sm:p-6">
       <section
         role="dialog"
         aria-labelledby="cookie-consent-title"
         aria-describedby="cookie-consent-description"
-        className="mx-auto max-w-4xl rounded-3xl border border-border bg-card p-6 shadow-2xl sm:p-8"
+        className="mx-auto min-w-0 max-w-4xl rounded-3xl border border-border bg-card p-5 shadow-2xl sm:p-8"
       >
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="max-w-2xl">
+          <div className="min-w-0 max-w-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
               Your privacy
             </p>

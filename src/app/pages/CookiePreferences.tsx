@@ -116,8 +116,8 @@ export function CookiePreferences({ onNavigateHome }: CookiePreferencesProps) {
 
           {showCustomisation ? (
             <div id="custom-cookie-preferences" className="mt-8 space-y-4">
-              <div className="flex items-start justify-between gap-6 rounded-2xl border border-border bg-background p-5">
-                <div>
+              <div className="flex min-w-0 items-start justify-between gap-3 rounded-2xl border border-border bg-background p-4 sm:gap-6 sm:p-5">
+                <div className="min-w-0">
                   <h2 className="font-semibold text-foreground">Essential</h2>
                   <p className="mt-1 text-sm leading-6 text-muted-foreground">
                     Required for security, account sessions, bookings, and remembering
@@ -186,8 +186,8 @@ function CookiePreferenceToggle({
   onChange,
 }: CookiePreferenceToggleProps) {
   return (
-    <div className="flex items-start justify-between gap-6 rounded-2xl border border-border bg-background p-5">
-      <div>
+    <div className="flex min-w-0 items-start justify-between gap-3 rounded-2xl border border-border bg-background p-4 sm:gap-6 sm:p-5">
+      <div className="min-w-0">
         <label htmlFor={id} className="font-semibold text-foreground">
           {title}
         </label>

@@ -1906,7 +1906,7 @@ export default function BookingApp() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground font-sans">
+    <div className="min-h-screen w-full max-w-full overflow-x-clip bg-background text-foreground font-sans">
       <nav className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <button className="flex items-center gap-2.5" onClick={navigateHome}>
@@ -2245,18 +2245,18 @@ export default function BookingApp() {
             </div>
           </section>
         ) : currentView === "dashboard" && user ? (
-          <section className="px-6 py-16">
+          <section className="min-w-0 px-4 py-12 sm:px-6 sm:py-16">
             <div className="mx-auto max-w-6xl space-y-8">
-              <div className="rounded-3xl border border-border bg-card p-8 shadow-sm">
+              <div className="min-w-0 rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-8">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">Your account</p>
                     <h2 className="text-3xl font-bold font-serif text-foreground">{user.firstName} {user.surname}</h2>
-                    <p className="mt-2 text-sm text-muted-foreground">{user.email}</p>
+                    <p className="mt-2 break-words text-sm text-muted-foreground">{user.email}</p>
                   </div>
-                  <div className="rounded-2xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
-                    <p><span className="font-semibold text-foreground">Customer reference:</span> <span className="font-mono tracking-wide">{user.customerReference || "Loading..."}</span></p>
-                    <p><span className="font-semibold text-foreground">Address:</span> {user.address}</p>
+                  <div className="min-w-0 rounded-2xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
+                    <p className="break-words"><span className="font-semibold text-foreground">Customer reference:</span> <span className="font-mono tracking-wide">{user.customerReference || "Loading..."}</span></p>
+                    <p className="break-words"><span className="font-semibold text-foreground">Address:</span> {user.address}</p>
                     <p><span className="font-semibold text-foreground">Mobile:</span> {user.mobileNumber}</p>
                   </div>
                 </div>
@@ -2264,15 +2264,15 @@ export default function BookingApp() {
 
               {feedback ? <div className="rounded-2xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">{feedback}</div> : null}
 
-              <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-                <div className="rounded-3xl border border-border bg-card p-8 shadow-sm">
+              <div className="grid min-w-0 gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+                <div className="min-w-0 rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-8">
                   <div className="mb-6 flex items-center justify-between">
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">Upcoming bookings</p>
                       <h3 className="text-2xl font-bold font-serif text-foreground">Manage your appointments</h3>
                       <p className="mt-2 text-sm text-muted-foreground">Delete sends a request to Dominic for approval before anything is removed.</p>
                     </div>
-                    <CalendarClock className="text-primary" size={24} />
+                    <CalendarClock className="shrink-0 text-primary" size={24} />
                   </div>
                   <div className="space-y-4">
                     {appointments.length === 0 ? (
@@ -2488,7 +2488,7 @@ export default function BookingApp() {
                   </div>
                 </div>
 
-                <div className="rounded-3xl border border-border bg-card p-8 shadow-sm">
+                <div className="min-w-0 rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-8">
                   <div className="mb-6">
                     <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">Book a new slot</p>
                     <h3 className="text-2xl font-bold font-serif text-foreground">Reserve a time and month</h3>
@@ -2507,17 +2507,17 @@ export default function BookingApp() {
                     <>
                       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                         <span className="text-sm font-semibold text-foreground">Select a month and date</span>
-                        <div className="flex items-center gap-2">
+                        <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:gap-2">
                           <button type="button" aria-label="Previous month" onClick={() => showMonth(subMonths(currentMonth, 1))} className="rounded-lg border border-border p-2"><ChevronLeft size={16} /></button>
                           <select
                             aria-label="Select month"
                             value={currentMonth.getMonth()}
                             onChange={(event) => handleMonthSelect(Number(event.target.value))}
-                            className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground"
+                            className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-2 text-sm font-semibold text-foreground sm:flex-none sm:px-3"
                           >
                             {MONTHS.map((month, index) => <option key={month} value={index}>{month}</option>)}
                           </select>
-                          <span className="min-w-10 text-center text-sm font-semibold text-foreground">{format(currentMonth, "yyyy")}</span>
+                          <span className="min-w-10 shrink-0 text-center text-sm font-semibold text-foreground">{format(currentMonth, "yyyy")}</span>
                           <button type="button" aria-label="Next month" onClick={() => showMonth(addMonths(currentMonth, 1))} className="rounded-lg border border-border p-2"><ChevronRight size={16} /></button>
                         </div>
                       </div>
@@ -2641,19 +2641,19 @@ export default function BookingApp() {
         ) : (
           <>
             <section className="min-h-screen grid md:grid-cols-2">
-              <div className="bg-[#1B2B1B] flex flex-col justify-center px-10 md:px-16 py-24 order-2 md:order-1">
+              <div className="min-w-0 bg-[#1B2B1B] flex flex-col justify-center px-5 sm:px-10 md:px-16 py-16 sm:py-24 order-2 md:order-1">
                 <p className="text-[#5A8B60] text-xs font-semibold tracking-[0.2em] uppercase mb-6">Essex, UK</p>
                 <h1 className="text-white text-5xl md:text-6xl lg:text-[4.5rem] font-bold font-serif leading-[1.05] mb-8">Expert care for your best friend.</h1>
                 <p className="text-[#A8BFA9] text-lg leading-relaxed mb-10 max-w-md">Grooming, training, daycare, and boarding — all under one roof. Sign in, register, and book in minutes.</p>
-                <div className="flex flex-wrap gap-4">
-                  <button onClick={scrollToBooking} className="bg-primary text-white px-8 py-4 rounded-xl text-base font-semibold hover:bg-primary/90 transition-all hover:shadow-lg flex items-center gap-2.5">Book an Appointment <ArrowRight size={18} /></button>
-                  <button onClick={() => { setAuthMode("login"); setCurrentView("login"); }} className="text-white/80 px-8 py-4 rounded-xl text-base font-medium border border-white/20 hover:border-white/40 hover:bg-white/5 transition-all">Sign In</button>
+                <div className="flex min-w-0 flex-wrap gap-4">
+                  <button onClick={scrollToBooking} className="flex w-full min-w-0 items-center justify-center gap-2.5 rounded-xl bg-primary px-5 py-4 text-base font-semibold text-white transition-all hover:bg-primary/90 hover:shadow-lg sm:w-auto sm:px-8">Book an Appointment <ArrowRight className="shrink-0" size={18} /></button>
+                  <button onClick={() => { setAuthMode("login"); setCurrentView("login"); }} className="w-full rounded-xl border border-white/20 px-5 py-4 text-base font-medium text-white/80 transition-all hover:border-white/40 hover:bg-white/5 sm:w-auto sm:px-8">Sign In</button>
                 </div>
-                <div className="mt-16 flex gap-12">
+                <div className="mt-12 grid min-w-0 grid-cols-3 gap-3 sm:mt-16 sm:flex sm:gap-12">
                   {[{ value: "500+", label: "Happy dogs" }, { value: "5★", label: "Avg rating" }, { value: "4 yrs", label: "In business" }].map((stat) => (
-                    <div key={stat.label}>
+                    <div key={stat.label} className="min-w-0">
                       <div className="text-white text-2xl font-bold font-serif">{stat.value}</div>
-                      <div className="text-[#6A9B6C] text-sm mt-0.5">{stat.label}</div>
+                      <div className="mt-0.5 text-xs text-[#6A9B6C] sm:text-sm">{stat.label}</div>
                     </div>
                   ))}
                 </div>
@@ -2662,7 +2662,7 @@ export default function BookingApp() {
                 <img src="https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=900&h=1100&fit=crop&auto=format" alt="Happy golden retriever" className="absolute inset-0 w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
                 <div
-                  className="absolute bottom-8 left-8 bg-white rounded-2xl shadow-2xl p-5 max-w-[320px]"
+                  className="absolute bottom-4 left-4 right-4 max-w-none rounded-2xl bg-white p-4 shadow-2xl sm:bottom-8 sm:left-8 sm:right-auto sm:max-w-[320px] sm:p-5"
                   role="status"
                   aria-live="polite"
                 >
@@ -2670,7 +2670,7 @@ export default function BookingApp() {
                     <div className="w-9 h-9 bg-emerald-100 rounded-full flex items-center justify-center shrink-0">
                       <Check size={15} className="text-emerald-600" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="text-[11px] text-muted-foreground">Next Appointment</div>
                       <div className="text-sm font-semibold text-foreground">
                         {nextAppointment
@@ -2738,46 +2738,46 @@ export default function BookingApp() {
               onRefresh={() => void loadWeather()}
             />
 
-            <section id="booking" className="py-24 px-6">
+            <section id="booking" className="px-4 py-16 sm:px-6 sm:py-24">
               <div className="max-w-6xl mx-auto">
                 <div className="mb-14">
                   <p className="text-primary text-xs font-semibold tracking-[0.18em] uppercase mb-4">Reserve a spot</p>
                   <h2 className="text-4xl md:text-5xl font-bold font-serif text-foreground leading-tight mb-3">Book an appointment</h2>
                   <p className="text-muted-foreground text-lg max-w-lg">Create your account, select a service, choose an available date and time, and confirm your appointment. All booking details are securely stored in PostgreSQL to ensure your information is managed safely and reliably.</p>
                 </div>
-                <div className="rounded-3xl border border-border bg-card p-8 shadow-sm">
+                <div className="min-w-0 rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-8">
                   {feedback && currentView === "home" ? <div className="mb-6 rounded-2xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">{feedback}</div> : null}
                   {!user ? (
-                    <div className="rounded-2xl border border-dashed border-border p-10 text-center">
+                    <div className="min-w-0 rounded-2xl border border-dashed border-border p-5 text-center sm:p-10">
                       <h3 className="text-2xl font-bold font-serif text-foreground">Create an account to book</h3>
                       <p className="mt-3 text-muted-foreground">Sign in or register to access real-time booking and manage your appointments.</p>
-                      <div className="mt-6 flex justify-center gap-3">
-                        <button onClick={() => { setAuthMode("login"); setCurrentView("login"); }} className="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground">Sign In</button>
-                        <button onClick={() => { setAuthMode("register"); setCurrentView("register"); }} className="rounded-xl border border-border px-5 py-3 text-sm font-semibold">Register</button>
+                      <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+                        <button onClick={() => { setAuthMode("login"); setCurrentView("login"); }} className="w-full rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground sm:w-auto">Sign In</button>
+                        <button onClick={() => { setAuthMode("register"); setCurrentView("register"); }} className="w-full rounded-xl border border-border px-5 py-3 text-sm font-semibold sm:w-auto">Register</button>
                       </div>
                     </div>
                   ) : (
-                    <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
-                      <div className="rounded-2xl border border-border bg-background p-6">
+                    <div className="grid min-w-0 gap-8 lg:grid-cols-[0.9fr_1.1fr]">
+                      <div className="min-w-0 rounded-2xl border border-border bg-background p-4 sm:p-6">
                         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">Quick booking</p>
                         <h3 className="mt-2 text-2xl font-bold font-serif text-foreground">Your dashboard is ready</h3>
                         <p className="mt-3 text-sm text-muted-foreground">Once you sign in, you can view your upcoming appointments, confirm visits, and reschedule them instantly.</p>
                         <button onClick={() => setCurrentView("dashboard")} className="mt-6 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground">Open dashboard</button>
                       </div>
-                      <div className="rounded-2xl border border-border bg-background p-6">
+                      <div className="min-w-0 rounded-2xl border border-border bg-background p-4 sm:p-6">
                         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                           <span className="text-sm font-semibold text-foreground">Select a month and date</span>
-                          <div className="flex items-center gap-2">
+                          <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:gap-2">
                             <button type="button" aria-label="Previous month" onClick={() => showMonth(subMonths(currentMonth, 1))} className="rounded-lg border border-border p-2"><ChevronLeft size={16} /></button>
                             <select
                               aria-label="Select month"
                               value={currentMonth.getMonth()}
                               onChange={(event) => handleMonthSelect(Number(event.target.value))}
-                              className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground"
+                              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-2 py-2 text-sm font-semibold text-foreground sm:flex-none sm:px-3"
                             >
                               {MONTHS.map((month, index) => <option key={month} value={index}>{month}</option>)}
                             </select>
-                            <span className="min-w-10 text-center text-sm font-semibold text-foreground">{format(currentMonth, "yyyy")}</span>
+                            <span className="min-w-10 shrink-0 text-center text-sm font-semibold text-foreground">{format(currentMonth, "yyyy")}</span>
                             <button type="button" aria-label="Next month" onClick={() => showMonth(addMonths(currentMonth, 1))} className="rounded-lg border border-border p-2"><ChevronRight size={16} /></button>
                           </div>
                         </div>

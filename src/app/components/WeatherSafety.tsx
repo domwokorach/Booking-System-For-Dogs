@@ -229,13 +229,13 @@ export function WeatherSafetyAlert({ weather }: { weather: WeatherSafetyStatus |
   }
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-[120] flex max-w-full items-center justify-center overflow-x-hidden bg-black/50 p-3 sm:p-4">
       <section
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="weather-alert-title"
         aria-describedby="weather-alert-description"
-        className={`relative w-full max-w-lg rounded-3xl border bg-white p-7 shadow-2xl sm:p-9 ${restored ? "border-emerald-200" : "border-red-200"}`}
+        className={`relative min-w-0 w-full max-w-lg rounded-3xl border bg-white p-6 shadow-2xl sm:p-9 ${restored ? "border-emerald-200" : "border-red-200"}`}
       >
         <button
           type="button"
