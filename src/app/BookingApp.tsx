@@ -2576,9 +2576,9 @@ export default function BookingApp() {
                   {user ? (
                     <div className="mt-3 border-t border-border pt-3 text-xs leading-5 text-muted-foreground">
                       <span className="font-semibold text-foreground">Customer:</span>{" "}
-                      <span className="font-mono">{user.customerReference}</span>{" "}
-                      <span aria-hidden="true">—</span>{" "}
-                      <span>{user.firstName} {user.surname}</span>
+                      <span className="font-mono">
+                        {user.customerReference || "Loading..."}
+                      </span>
                     </div>
                   ) : null}
                 </div>
@@ -2776,16 +2776,6 @@ export default function BookingApp() {
                       className="text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
                     >
                       Terms and Conditions
-                    </a>
-                    <a
-                      href="/cookie-preferences"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        navigateToCookiePreferences();
-                      }}
-                      className="text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      Cookie Preferences
                     </a>
                   </div>
                 </div>
