@@ -1,41 +1,25 @@
 import { useState } from "react";
-
-const COOKIE_PREFERENCES_STORAGE_KEY = "pawside_cookie_preferences";
+import {
+  type OptionalCookiePreferences,
+  readCookiePreferences,
+  saveCookiePreferences,
+} from "../lib/cookie-preferences";
 
 interface CookiePreferencesProps {
   onNavigateHome: () => void;
 }
 
-interface OptionalCookiePreferences {
-  analytics: boolean;
-  marketing: boolean;
-}
-
-interface StoredCookiePreferences extends OptionalCookiePreferences {
-  necessary: true;
-  updatedAt: string;
-}
-
-function readCookiePreferences(): OptionalCookiePreferences {
-  try {
-    const storedValue = window.localStorage.getItem(COOKIE_PREFERENCES_STORAGE_KEY);
-    if (!storedValue) {
-      return { analytics: false, marketing: false };
-    }
-
-    const parsedValue = JSON.parse(storedValue) as Partial<StoredCookiePreferences>;
-    return {
-      analytics: parsedValue.analytics === true,
-      marketing: parsedValue.marketing === true,
-    };
-  } catch {
-    return { analytics: false, marketing: false };
-  }
-}
-
 export function CookiePreferences({ onNavigateHome }: CookiePreferencesProps) {
   const [preferences, setPreferences] = useState<OptionalCookiePreferences>(
-    readCookiePreferences,
+    () => {
+      const storedPreferences = readCookiePreferences();
+      return storedPreferences
+        ? {
+            analytics: storedPreferences.analytics,
+            marketing: storedPreferences.marketing,
+          }
+        : { analytics: false, marketing: false };
+    },
   );
   const [showCustomisation, setShowCustomisation] = useState(false);
   const [confirmation, setConfirmation] = useState<string | null>(null);
@@ -44,16 +28,7 @@ export function CookiePreferences({ onNavigateHome }: CookiePreferencesProps) {
     nextPreferences: OptionalCookiePreferences,
     message: string,
   ) {
-    const storedPreferences: StoredCookiePreferences = {
-      necessary: true,
-      ...nextPreferences,
-      updatedAt: new Date().toISOString(),
-    };
-
-    window.localStorage.setItem(
-      COOKIE_PREFERENCES_STORAGE_KEY,
-      JSON.stringify(storedPreferences),
-    );
+    saveCookiePreferences(nextPreferences);
     setPreferences(nextPreferences);
     setConfirmation(message);
   }

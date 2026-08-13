@@ -37,6 +37,7 @@ import {
   isSunday,
 } from "date-fns";
 import { io } from "socket.io-client";
+import { CookieConsentPopup } from "./components/CookieConsentPopup";
 import { getStatusStyles } from "./lib/booking-status";
 import { CookiePreferences } from "./pages/CookiePreferences";
 import { TermsAndConditions } from "./pages/TermsAndConditions";
@@ -2793,6 +2794,10 @@ export default function BookingApp() {
           </>
         )}
       </div>
+      <CookieConsentPopup
+        hidden={currentView === "cookie-preferences"}
+        onCustomise={navigateToCookiePreferences}
+      />
     </div>
   );
 }
