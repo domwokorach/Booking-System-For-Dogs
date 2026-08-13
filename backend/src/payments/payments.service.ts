@@ -106,6 +106,7 @@ export class PaymentsService {
       const session = await stripe.checkout.sessions.create(
         {
           mode: "payment",
+          integration_identifier: `pawside_checkout_${randomLetterSuffix()}`,
           client_reference_id: input.appointmentId,
           customer_email: input.customerEmail,
           invoice_creation: {
@@ -484,8 +485,24 @@ export class PaymentsService {
           pendingPayment.stripeCheckoutSessionId,
         );
         if (session.payment_status !== "unpaid") {
+          // Stripe has already confirmed the money even if webhook delivery is
+          // delayed. Reconcile the server-retrieved Session, then continue
+          // the same administrator approval into the refund automatically.
+          await this.fulfillPaidSession(session);
+          const synchronizedRefund = await this.processApprovedRefund(
+            request.appointmentId,
+            request.id,
+          );
+          if (synchronizedRefund) {
+            return synchronizedRefund;
+          }
           throw new ConflictException(
-            "Stripe is still processing this payment. Retry approval after the payment webhook is received.",
+            "Stripe confirmed the payment, but Pawside could not prepare its refund. Please retry approval.",
+          );
+        }
+        if (session.status === "complete") {
+          throw new ConflictException(
+            "Stripe is still processing this payment method. Pawside will update it when Stripe sends the success or failure webhook; retry approval afterwards.",
           );
         }
         if (session.status === "open") {
@@ -1089,6 +1106,12 @@ export class PaymentsService {
     }
     return this.stripe;
   }
+}
+
+function randomLetterSuffix(): string {
+  return Array.from(randomBytes(8), (byte) =>
+    String.fromCharCode(97 + (byte % 26)),
+  ).join("");
 }
 
 function paymentStatusResponse(status: PaymentStatus): string {
