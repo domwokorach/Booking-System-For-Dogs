@@ -91,6 +91,11 @@ After the final frontend URL is known, set it as `FRONTEND_URL` on the backend,
 then redeploy. `CLIENT_ORIGIN` can be omitted because it defaults to
 `FRONTEND_URL`, or set explicitly to the same origin.
 
+The root `vercel.json` filters installation to `@figma/my-make-file`. This is
+intentional: the frontend does not use Prisma, so its Vercel build must not
+install the separate backend workspace. Prisma Client generation remains in
+the backend project's `postinstall` and `vercel-build` commands.
+
 ## 4. Configure Stripe
 
 Create a production webhook endpoint in Stripe:
