@@ -21,6 +21,7 @@ export interface WeatherSafetyStatus {
   heatWarning: boolean;
   bookingBlocked: boolean;
   alertStartedAt: string | null;
+  safetyRestoredAt: string | null;
   observedAt: string;
   checkedAt: string;
   stale: boolean;
@@ -184,15 +185,25 @@ function WeatherDetail({ icon: Icon, label, value }: WeatherDetailProps) {
   );
 }
 
-export function HeatSafetyAlert({ weather }: { weather: WeatherSafetyStatus | null }) {
-  const alertKey = weather?.alertStartedAt ?? weather?.checkedAt ?? null;
-  const storageKey = alertKey ? `pawside_heat_alert_dismissed:${alertKey}` : null;
-  const [dismissedKey, setDismissedKey] = useState<string | null>(() => {
-    if (!storageKey) {
-      return null;
-    }
-    return window.sessionStorage.getItem(storageKey) === "true" ? alertKey : null;
-  });
+const RESTORED_ALERT_LIFETIME_MS = 30 * 60_000;
+
+export function WeatherSafetyAlert({ weather }: { weather: WeatherSafetyStatus | null }) {
+  const safetyRestoredAt = weather?.safetyRestoredAt ?? null;
+  const safetyRestoredRecently = Boolean(
+    safetyRestoredAt &&
+      Date.now() - new Date(safetyRestoredAt).getTime() <= RESTORED_ALERT_LIFETIME_MS,
+  );
+  const alertType = weather?.heatWarning
+    ? "heat"
+    : weather && weather.temperatureC < 25 && safetyRestoredRecently
+      ? "restored"
+      : null;
+  const alertKey = alertType === "heat" ? weather?.alertStartedAt : safetyRestoredAt;
+  const storageKey =
+    alertType && alertKey
+      ? `pawside_weather_alert_dismissed:${alertType}:${alertKey}`
+      : null;
+  const [dismissedKey, setDismissedKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!storageKey || !alertKey) {
@@ -204,9 +215,11 @@ export function HeatSafetyAlert({ weather }: { weather: WeatherSafetyStatus | nu
     );
   }, [alertKey, storageKey]);
 
-  if (!weather?.heatWarning || !alertKey || dismissedKey === alertKey) {
+  if (!weather || !alertType || !alertKey || dismissedKey === alertKey) {
     return null;
   }
+
+  const restored = alertType === "restored";
 
   function dismiss() {
     if (storageKey && alertKey) {
@@ -220,36 +233,47 @@ export function HeatSafetyAlert({ weather }: { weather: WeatherSafetyStatus | nu
       <section
         role="alertdialog"
         aria-modal="true"
-        aria-labelledby="heat-warning-title"
-        aria-describedby="heat-warning-description"
-        className="relative w-full max-w-lg rounded-3xl border border-red-200 bg-white p-7 shadow-2xl sm:p-9"
+        aria-labelledby="weather-alert-title"
+        aria-describedby="weather-alert-description"
+        className={`relative w-full max-w-lg rounded-3xl border bg-white p-7 shadow-2xl sm:p-9 ${restored ? "border-emerald-200" : "border-red-200"}`}
       >
         <button
           type="button"
           onClick={dismiss}
-          aria-label="Dismiss high-temperature warning"
+          aria-label={`Dismiss ${restored ? "safer weather update" : "high-temperature warning"}`}
           className="absolute right-5 top-5 rounded-lg p-1.5 text-muted-foreground hover:bg-muted"
         >
           <X size={19} />
         </button>
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-700">
-          <AlertTriangle size={24} />
+        <div className={`flex h-12 w-12 items-center justify-center rounded-full ${restored ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+          {restored ? <ShieldCheck size={24} /> : <AlertTriangle size={24} />}
         </div>
-        <p className="mt-6 text-xs font-semibold uppercase tracking-[0.2em] text-red-700">
-          Dog safety alert
+        <p className={`mt-6 text-xs font-semibold uppercase tracking-[0.2em] ${restored ? "text-emerald-700" : "text-red-700"}`}>
+          {restored ? "Weather safety update" : "Dog safety alert"}
         </p>
-        <h2 id="heat-warning-title" className="mt-2 font-serif text-3xl font-bold text-foreground">
-          High-temperature warning
+        <h2 id="weather-alert-title" className="mt-2 font-serif text-3xl font-bold text-foreground">
+          {restored ? "Appointments available again" : "High-temperature warning"}
         </h2>
-        <p id="heat-warning-description" className="mt-4 text-sm leading-7 text-muted-foreground">
-          It is currently {formatTemperature(weather.temperatureC)} in {weather.location}.
-          Avoid taking your dog outside unless necessary. Appointment booking is paused
-          and will reopen after the temperature falls below 25°C.
+        <p id="weather-alert-description" className="mt-4 text-sm leading-7 text-muted-foreground">
+          {restored ? (
+            <>
+              The temperature in {weather.location} has fallen below 25°C and is currently{" "}
+              {formatTemperature(weather.temperatureC)}. Appointment slots are available
+              for booking again. Conditions are generally safer, but continue to consider
+              your dog and the current weather conditions.
+            </>
+          ) : (
+            <>
+              It is currently {formatTemperature(weather.temperatureC)} in {weather.location}.
+              Avoid taking your dog outside unless necessary. Appointment booking is paused
+              and will reopen after the temperature falls below 25°C.
+            </>
+          )}
         </p>
         <button
           type="button"
           onClick={dismiss}
-          className="mt-7 w-full rounded-xl bg-red-700 px-5 py-3 text-sm font-semibold text-white"
+          className={`mt-7 w-full rounded-xl px-5 py-3 text-sm font-semibold text-white ${restored ? "bg-emerald-700" : "bg-red-700"}`}
         >
           I understand
         </button>

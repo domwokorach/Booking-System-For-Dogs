@@ -215,3 +215,12 @@ export async function sendHeatWarningEmail(data) {
         text: `Hi ${data.firstName},\n\nA high-temperature warning is active for ${data.location}. The current temperature is ${temperature}.\n\nPlease avoid taking your dog outside unless necessary. If you must go outside, keep the trip brief, provide fresh water, seek shade, and check the ground temperature before walking.\n\nPawside appointment slots are temporarily unavailable and will reopen automatically after the temperature falls below 25°C.`,
     });
 }
+export async function sendSafeConditionsRestoredEmail(data) {
+    const temperature = `${data.temperatureC.toFixed(1)}°C`;
+    return sendMailSafely({
+        from: env.EMAIL_FROM,
+        to: data.to,
+        subject: "Pawside weather safety update — appointments available",
+        text: `Hi ${data.firstName},\n\nThe temperature in ${data.location} has fallen below 25°C and is currently ${temperature}. Pawside appointment slots are available for booking again.\n\nConditions are generally safer for dog walking, but please continue to consider your dog's age, breed and health, as well as humidity, ground temperature and other local weather conditions.`,
+    });
+}

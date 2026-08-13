@@ -4,7 +4,7 @@ import {
   type OnModuleInit,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { AppointmentStatus, Prisma } from "@prisma/client";
+import { AppointmentStatus } from "@prisma/client";
 import { z } from "zod";
 
 import { env } from "../config/env.js";
@@ -13,6 +13,7 @@ import { PrismaService } from "../prisma/prisma.service.js";
 import { evaluateWeatherSafety } from "./weather-policy.js";
 
 const WEATHER_STATE_ID = "pawside";
+const EMAIL_RETRY_DELAY_MS = 15 * 60_000;
 const ACTIVE_APPOINTMENT_STATUSES: AppointmentStatus[] = [
   AppointmentStatus.Pending,
   AppointmentStatus.Confirmed,
@@ -44,6 +45,8 @@ type WeatherStateRecord = {
   condition: string | null;
   bookingBlocked: boolean;
   alertStartedAt: Date | null;
+  safetyRestoredAt: Date | null;
+  restoredAlertStartedAt: Date | null;
   weatherObservedAt: Date;
   checkedAt: Date;
 };
@@ -132,15 +135,25 @@ export class WeatherService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async getCurrentWeather() {
+  async getCurrentWeather(forceRefresh = false) {
     const cached = await this.prisma.weatherSafetyState.findUnique({
       where: { id: WEATHER_STATE_ID },
     });
     const cacheLifetime = env.WEATHER_CACHE_MINUTES * 60_000;
 
-    if (cached && Date.now() - cached.checkedAt.getTime() < cacheLifetime) {
+    if (
+      !forceRefresh &&
+      cached &&
+      Date.now() - cached.checkedAt.getTime() < cacheLifetime
+    ) {
       if (cached.temperatureC >= 30 && cached.alertStartedAt) {
         await this.notifyAffectedCustomers(cached);
+      } else if (
+        !cached.bookingBlocked &&
+        cached.safetyRestoredAt &&
+        cached.restoredAlertStartedAt
+      ) {
+        await this.notifySafetyRestored(cached);
       }
       return this.toResponse(cached, false);
     }
@@ -159,11 +172,26 @@ export class WeatherService implements OnModuleInit, OnModuleDestroy {
           current.temperatureC,
           previous?.bookingBlocked ?? false,
         );
+        const safetyWasRestored = Boolean(
+          previous?.bookingBlocked &&
+            !decision.bookingBlocked &&
+            previous.alertStartedAt,
+        );
         const alertStartedAt = decision.heatWarning
           ? previous?.alertStartedAt ?? checkedAt
           : decision.bookingBlocked
             ? previous?.alertStartedAt ?? null
             : null;
+        const safetyRestoredAt = decision.heatWarning
+          ? null
+          : safetyWasRestored
+            ? checkedAt
+            : previous?.safetyRestoredAt ?? null;
+        const restoredAlertStartedAt = decision.heatWarning
+          ? null
+          : safetyWasRestored
+            ? previous?.alertStartedAt ?? null
+            : previous?.restoredAlertStartedAt ?? null;
 
         return transaction.weatherSafetyState.upsert({
           where: { id: WEATHER_STATE_ID },
@@ -172,12 +200,16 @@ export class WeatherService implements OnModuleInit, OnModuleDestroy {
             ...current,
             bookingBlocked: decision.bookingBlocked,
             alertStartedAt,
+            safetyRestoredAt,
+            restoredAlertStartedAt,
             checkedAt,
           },
           update: {
             ...current,
             bookingBlocked: decision.bookingBlocked,
             alertStartedAt,
+            safetyRestoredAt,
+            restoredAlertStartedAt,
             checkedAt,
           },
         });
@@ -185,6 +217,12 @@ export class WeatherService implements OnModuleInit, OnModuleDestroy {
 
       if (saved.temperatureC >= 30 && saved.alertStartedAt) {
         await this.notifyAffectedCustomers(saved);
+      } else if (
+        !saved.bookingBlocked &&
+        saved.safetyRestoredAt &&
+        saved.restoredAlertStartedAt
+      ) {
+        await this.notifySafetyRestored(saved);
       }
       return this.toResponse(saved, false);
     } catch (error) {
@@ -215,6 +253,10 @@ export class WeatherService implements OnModuleInit, OnModuleDestroy {
       });
       return lastKnown?.bookingBlocked ?? false;
     }
+  }
+
+  refreshNow() {
+    return this.getCurrentWeather(true);
   }
 
   private async fetchCurrentWeather(): Promise<WeatherStateRecord> {
@@ -250,6 +292,8 @@ export class WeatherService implements OnModuleInit, OnModuleDestroy {
       condition: parsed.weather[0]?.description ?? null,
       bookingBlocked: false,
       alertStartedAt: null,
+      safetyRestoredAt: null,
+      restoredAlertStartedAt: null,
       weatherObservedAt: new Date(parsed.dt * 1000),
       checkedAt: new Date(),
     };
@@ -257,7 +301,7 @@ export class WeatherService implements OnModuleInit, OnModuleDestroy {
 
   private async refreshInBackground() {
     try {
-      await this.getCurrentWeather();
+      await this.refreshNow();
     } catch (error) {
       console.error("Background weather refresh failed.", error);
     }
@@ -284,6 +328,7 @@ export class WeatherService implements OnModuleInit, OnModuleDestroy {
       heatWarning: decision.heatWarning,
       bookingBlocked: state.bookingBlocked,
       alertStartedAt: state.alertStartedAt?.toISOString() ?? null,
+      safetyRestoredAt: state.safetyRestoredAt?.toISOString() ?? null,
       observedAt: state.weatherObservedAt.toISOString(),
       checkedAt: state.checkedAt.toISOString(),
       stale,
@@ -313,34 +358,105 @@ export class WeatherService implements OnModuleInit, OnModuleDestroy {
 
     await Promise.allSettled(
       customers.map(async (customer) => {
-        try {
-          const notification = await this.prisma.weatherAlertNotification.create({
-            data: {
+        const notification = await this.prisma.weatherAlertNotification.upsert({
+          where: {
+            userId_alertStartedAt: {
               userId: customer.id,
               alertStartedAt: state.alertStartedAt!,
-              temperatureC: state.temperatureC,
             },
-          });
-          const delivered = await this.email.sendHeatWarning({
-            to: customer.email,
-            firstName: customer.firstName,
-            location: state.location,
+          },
+          update: { temperatureC: state.temperatureC },
+          create: {
+            userId: customer.id,
+            alertStartedAt: state.alertStartedAt!,
             temperatureC: state.temperatureC,
+          },
+        });
+        if (notification.deliveredAt) {
+          return;
+        }
+
+        const claimedAt = new Date();
+        const retryBefore = new Date(claimedAt.getTime() - EMAIL_RETRY_DELAY_MS);
+        const claimed = await this.prisma.weatherAlertNotification.updateMany({
+          where: {
+            id: notification.id,
+            deliveredAt: null,
+            OR: [
+              { lastAttemptedAt: null },
+              { lastAttemptedAt: { lt: retryBefore } },
+            ],
+          },
+          data: { lastAttemptedAt: claimedAt },
+        });
+        if (claimed.count === 0) {
+          return;
+        }
+
+        const delivered = await this.email.sendHeatWarning({
+          to: customer.email,
+          firstName: customer.firstName,
+          location: state.location,
+          temperatureC: state.temperatureC,
+        });
+        if (delivered) {
+          await this.prisma.weatherAlertNotification.update({
+            where: { id: notification.id },
+            data: { deliveredAt: new Date() },
           });
-          if (delivered) {
-            await this.prisma.weatherAlertNotification.update({
-              where: { id: notification.id },
-              data: { deliveredAt: new Date() },
-            });
-          }
-        } catch (error) {
-          if (
-            error instanceof Prisma.PrismaClientKnownRequestError &&
-            error.code === "P2002"
-          ) {
-            return;
-          }
-          throw error;
+        }
+      }),
+    );
+  }
+
+  private async notifySafetyRestored(state: WeatherStateRecord) {
+    if (!state.restoredAlertStartedAt) {
+      return;
+    }
+
+    const notifications = await this.prisma.weatherAlertNotification.findMany({
+      where: {
+        alertStartedAt: state.restoredAlertStartedAt,
+        deliveredAt: { not: null },
+        safetyRestoredDeliveredAt: null,
+      },
+      select: {
+        id: true,
+        safetyRestoredLastAttemptedAt: true,
+        user: { select: { firstName: true, email: true } },
+      },
+    });
+
+    await Promise.allSettled(
+      notifications.map(async (notification) => {
+        const claimedAt = new Date();
+        const retryBefore = new Date(claimedAt.getTime() - EMAIL_RETRY_DELAY_MS);
+        const claimed = await this.prisma.weatherAlertNotification.updateMany({
+          where: {
+            id: notification.id,
+            safetyRestoredDeliveredAt: null,
+            OR: [
+              { safetyRestoredLastAttemptedAt: null },
+              { safetyRestoredLastAttemptedAt: { lt: retryBefore } },
+            ],
+          },
+          data: { safetyRestoredLastAttemptedAt: claimedAt },
+        });
+        if (claimed.count === 0) {
+          return;
+        }
+
+        const delivered = await this.email.sendSafeConditionsRestored({
+          to: notification.user.email,
+          firstName: notification.user.firstName,
+          location: state.location,
+          temperatureC: state.temperatureC,
+        });
+        if (delivered) {
+          await this.prisma.weatherAlertNotification.update({
+            where: { id: notification.id },
+            data: { safetyRestoredDeliveredAt: new Date() },
+          });
         }
       }),
     );

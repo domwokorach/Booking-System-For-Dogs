@@ -48,6 +48,8 @@ The main application modules live under `src/`:
 - `files/`, `storage/`, and `notifications/` handle uploads and email workflows.
 - `reviews/` validates and publishes feedback from customers with completed appointments.
 - `realtime/` publishes authenticated appointment updates over Socket.IO.
+- `weather/` caches OpenWeather conditions, controls heat-related booking
+  availability, and sends deduplicated unsafe/safe-again customer alerts.
 - `prisma/` owns the injectable Prisma client and its application lifecycle.
 
 Public API routes keep the `/api` paths used by the frontend. Health endpoints
@@ -74,6 +76,8 @@ POST /api/appointments/:id/delete-request
 POST /api/appointments/delete/confirm
 GET  /api/reviews
 POST /api/reviews
+GET  /api/weather
+GET  /api/weather/refresh
 POST /api/users/me/delete-request
 ```
 

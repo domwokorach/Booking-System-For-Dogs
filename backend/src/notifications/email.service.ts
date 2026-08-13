@@ -12,6 +12,7 @@ import {
   sendRefundFailureEmail,
   sendRefundRequestedEmail,
   sendHeatWarningEmail,
+  sendSafeConditionsRestoredEmail,
 } from "../services/email.service.js";
 
 export type BookingEmailData = {
@@ -103,5 +104,14 @@ export class EmailService {
     temperatureC: number;
   }): Promise<boolean> {
     return sendHeatWarningEmail(data);
+  }
+
+  sendSafeConditionsRestored(data: {
+    to: string;
+    firstName: string;
+    location: string;
+    temperatureC: number;
+  }): Promise<boolean> {
+    return sendSafeConditionsRestoredEmail(data);
   }
 }

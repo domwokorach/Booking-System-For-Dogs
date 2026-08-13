@@ -39,7 +39,7 @@ import {
 import { io } from "socket.io-client";
 import { CookieConsentPopup } from "./components/CookieConsentPopup";
 import {
-  HeatSafetyAlert,
+  WeatherSafetyAlert,
   WeatherSafetyPanel,
   type WeatherSafetyStatus,
 } from "./components/WeatherSafety";
@@ -2915,7 +2915,7 @@ export default function BookingApp() {
           </>
         )}
       </div>
-      <HeatSafetyAlert weather={liveNetworkStatus ? null : weather} />
+      <WeatherSafetyAlert weather={liveNetworkStatus ? null : weather} />
       <CookieConsentPopup
         hidden={
           liveNetworkStatus !== null ||

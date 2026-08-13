@@ -7,7 +7,11 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-import { Controller, Get } from "@nestjs/common";
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+import { Controller, Get, Headers, UnauthorizedException } from "@nestjs/common";
+import { env } from "../config/env.js";
 import { WeatherService } from "./weather.service.js";
 let WeatherController = class WeatherController {
     weather;
@@ -17,6 +21,13 @@ let WeatherController = class WeatherController {
     current() {
         return this.weather.getCurrentWeather();
     }
+    refresh(authorization) {
+        const secret = env.CRON_SECRET.trim();
+        if (!secret || authorization !== `Bearer ${secret}`) {
+            throw new UnauthorizedException("Invalid weather refresh credentials.");
+        }
+        return this.weather.refreshNow();
+    }
 };
 __decorate([
     Get(),
@@ -24,6 +35,13 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], WeatherController.prototype, "current", null);
+__decorate([
+    Get("refresh"),
+    __param(0, Headers("authorization")),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], WeatherController.prototype, "refresh", null);
 WeatherController = __decorate([
     Controller("api/weather"),
     __metadata("design:paramtypes", [WeatherService])

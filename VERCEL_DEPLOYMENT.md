@@ -62,6 +62,15 @@ BOOKING_EMAIL_TO=your-admin@example.com
 STRIPE_SECRET_KEY=sk_live_or_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_CURRENCY=gbp
+
+# OpenWeather current conditions (backend only)
+WEATHER_API=YOUR_ROTATED_OPENWEATHER_API_KEY
+WEATHER_LAT=51.7356
+WEATHER_LON=0.4685
+WEATHER_LOCATION=Essex, UK
+WEATHER_CACHE_MINUTES=10
+# Optional scheduler authentication; generate a random value of at least 16 characters.
+CRON_SECRET=GENERATE_A_LONG_RANDOM_SECRET
 ```
 
 Also configure the storage variables required by the selected `STORAGE_PROVIDER`.
@@ -100,6 +109,22 @@ Both Vercel install commands set `PRISMA_SKIP_POSTINSTALL_GENERATE=true` to
 prevent Prisma Client from trying to generate before pnpm finishes linking the
 workspace. The backend then runs the explicit `prisma generate` command from
 its own `postinstall` and `vercel-build` scripts.
+
+### Weather refresh scheduling
+
+Active browsers poll `GET /api/weather` every five minutes. For weather email
+transitions to run even when nobody has the site open, configure a scheduler
+to call the backend's protected endpoint every 10 minutes:
+
+```text
+GET https://YOUR-BACKEND.vercel.app/api/weather/refresh
+Authorization: Bearer YOUR_CRON_SECRET
+```
+
+Vercel Pro and Enterprise projects can register that endpoint as a 10-minute
+Cron Job. Do not add a 10-minute Vercel Cron to a Hobby project because Hobby
+cron schedules may run only once per day. A separate scheduler can call the
+same protected endpoint on the desired interval.
 
 ## 4. Configure Stripe
 

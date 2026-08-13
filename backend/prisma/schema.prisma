@@ -38,23 +38,23 @@ enum PaymentStatus {
 }
 
 model User {
-  id                     String                  @id @default(uuid())
-  customerReference      String                  @unique
-  firstName              String
-  surname                String
-  email                  String                  @unique
-  address                String
-  mobileNumber           String
-  passwordHash           String
-  appointments           Appointment[]
-  reviews                Review[]
-  refreshTokens          RefreshToken[]
-  passwordResetTokens    PasswordResetToken[]
-  accountDeletionRequest AccountDeletionRequest?
-  payments               Payment[]
+  id                        String                     @id @default(uuid())
+  customerReference         String                     @unique
+  firstName                 String
+  surname                   String
+  email                     String                     @unique
+  address                   String
+  mobileNumber              String
+  passwordHash              String
+  appointments              Appointment[]
+  reviews                   Review[]
+  refreshTokens             RefreshToken[]
+  passwordResetTokens       PasswordResetToken[]
+  accountDeletionRequest    AccountDeletionRequest?
+  payments                  Payment[]
   weatherAlertNotifications WeatherAlertNotification[]
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
 }
 
 model Service {
@@ -213,28 +213,33 @@ model AccountDeletionRequest {
 }
 
 model WeatherSafetyState {
-  id               String   @id @default("pawside")
-  location         String
-  temperatureC     Float
-  feelsLikeC       Float?
-  humidity         Int?
-  condition        String?
-  bookingBlocked   Boolean  @default(false)
-  alertStartedAt   DateTime?
-  weatherObservedAt DateTime
-  checkedAt        DateTime
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                     String    @id @default("pawside")
+  location               String
+  temperatureC           Float
+  feelsLikeC             Float?
+  humidity               Int?
+  condition              String?
+  bookingBlocked         Boolean   @default(false)
+  alertStartedAt         DateTime?
+  safetyRestoredAt       DateTime?
+  restoredAlertStartedAt DateTime?
+  weatherObservedAt      DateTime
+  checkedAt              DateTime
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 }
 
 model WeatherAlertNotification {
-  id             String   @id @default(uuid())
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  alertStartedAt DateTime
-  temperatureC   Float
-  deliveredAt    DateTime?
-  createdAt      DateTime @default(now())
+  id                            String    @id @default(uuid())
+  userId                        String
+  user                          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alertStartedAt                DateTime
+  temperatureC                  Float
+  lastAttemptedAt               DateTime?
+  deliveredAt                   DateTime?
+  safetyRestoredLastAttemptedAt DateTime?
+  safetyRestoredDeliveredAt     DateTime?
+  createdAt                     DateTime  @default(now())
 
   @@unique([userId, alertStartedAt])
   @@index([alertStartedAt])
