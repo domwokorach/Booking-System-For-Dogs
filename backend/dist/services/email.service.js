@@ -206,3 +206,12 @@ export async function sendAccountDeletionRequestEmails(data) {
         html: `<p>Hello ${safeFirstName},</p><p>A user requested deletion of the Pawside account associated with ${safeUserEmail}.</p><p><strong>Request ID:</strong> ${safeRequestId}</p><p><strong>Status: PENDING</strong></p><p><a href="${safeConfirmationUrl}" style="display:inline-block;padding:12px 18px;background:#b91c1c;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Approve deletion</a></p><p><a href="${safeCancellationUrl}" style="display:inline-block;padding:12px 18px;background:#166534;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Reject request</a></p><p>Both links expire in 30 minutes. The account remains active until approval is granted.</p>`,
     });
 }
+export async function sendHeatWarningEmail(data) {
+    const temperature = `${data.temperatureC.toFixed(1)}°C`;
+    return sendMailSafely({
+        from: env.EMAIL_FROM,
+        to: data.to,
+        subject: "Pawside high-temperature dog safety warning",
+        text: `Hi ${data.firstName},\n\nA high-temperature warning is active for ${data.location}. The current temperature is ${temperature}.\n\nPlease avoid taking your dog outside unless necessary. If you must go outside, keep the trip brief, provide fresh water, seek shade, and check the ground temperature before walking.\n\nPawside appointment slots are temporarily unavailable and will reopen automatically after the temperature falls below 25°C.`,
+    });
+}

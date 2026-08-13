@@ -11,6 +11,7 @@ import { ConflictException, Injectable } from "@nestjs/common";
 import { AppointmentStatus } from "@prisma/client";
 import { env } from "../config/env.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { WeatherService } from "../weather/weather.service.js";
 const ACTIVE_APPOINTMENT_STATUSES = [
     AppointmentStatus.Pending,
     AppointmentStatus.Confirmed,
@@ -86,10 +87,15 @@ function overlaps(start, durationMinutes, existingStart, existingDurationMinutes
 }
 let AppointmentSlotsService = class AppointmentSlotsService {
     prisma;
-    constructor(prisma) {
+    weather;
+    constructor(prisma, weather) {
         this.prisma = prisma;
+        this.weather = weather;
     }
     async getAvailableTimes(date, durationMinutes = 60, excludeAppointmentId) {
+        if (await this.weather.isBookingBlocked()) {
+            return [];
+        }
         const dateKey = typeof date === "string" ? date : date.toISOString().slice(0, 10);
         if (isSunday(dateKey)) {
             return [];
@@ -116,6 +122,9 @@ let AppointmentSlotsService = class AppointmentSlotsService {
             .map((slot) => slot.toISOString());
     }
     async isAvailable(dateTime, excludeAppointmentId, durationMinutes = 60) {
+        if (await this.weather.isBookingBlocked()) {
+            return false;
+        }
         if (!this.isBookableSlot(dateTime)) {
             return false;
         }
@@ -137,6 +146,9 @@ let AppointmentSlotsService = class AppointmentSlotsService {
         return !existing.some((appointment) => overlaps(dateTime, durationMinutes, appointment.dateTime, appointment.durationMinutes));
     }
     async withAvailableSlot(input, operation) {
+        if (await this.weather.isBookingBlocked()) {
+            throw new ConflictException("Appointments are temporarily unavailable because of the high temperature. Booking will reopen after the temperature falls below 25°C.");
+        }
         if (!this.isBookableSlot(input.dateTime)) {
             throw new ConflictException(input.conflictMessage);
         }
@@ -204,6 +216,7 @@ let AppointmentSlotsService = class AppointmentSlotsService {
 };
 AppointmentSlotsService = __decorate([
     Injectable(),
-    __metadata("design:paramtypes", [PrismaService])
+    __metadata("design:paramtypes", [PrismaService,
+        WeatherService])
 ], AppointmentSlotsService);
 export { AppointmentSlotsService };

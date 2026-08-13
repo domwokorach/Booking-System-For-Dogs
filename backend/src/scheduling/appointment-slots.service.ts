@@ -3,6 +3,7 @@ import { AppointmentStatus, Prisma } from "@prisma/client";
 
 import { env } from "../config/env.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { WeatherService } from "../weather/weather.service.js";
 
 const ACTIVE_APPOINTMENT_STATUSES: AppointmentStatus[] = [
   AppointmentStatus.Pending,
@@ -125,13 +126,20 @@ type SlotClaimInput = {
 
 @Injectable()
 export class AppointmentSlotsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly weather: WeatherService,
+  ) {}
 
   async getAvailableTimes(
     date: Date | string,
     durationMinutes = 60,
     excludeAppointmentId?: string,
   ): Promise<string[]> {
+    if (await this.weather.isBookingBlocked()) {
+      return [];
+    }
+
     const dateKey =
       typeof date === "string" ? date : date.toISOString().slice(0, 10);
 
@@ -183,6 +191,10 @@ export class AppointmentSlotsService {
     excludeAppointmentId?: string,
     durationMinutes = 60,
   ): Promise<boolean> {
+    if (await this.weather.isBookingBlocked()) {
+      return false;
+    }
+
     if (!this.isBookableSlot(dateTime)) {
       return false;
     }
@@ -217,6 +229,12 @@ export class AppointmentSlotsService {
     input: SlotClaimInput,
     operation: (transaction: Prisma.TransactionClient) => Promise<T>,
   ): Promise<T> {
+    if (await this.weather.isBookingBlocked()) {
+      throw new ConflictException(
+        "Appointments are temporarily unavailable because of the high temperature. Booking will reopen after the temperature falls below 25°C.",
+      );
+    }
+
     if (!this.isBookableSlot(input.dateTime)) {
       throw new ConflictException(input.conflictMessage);
     }

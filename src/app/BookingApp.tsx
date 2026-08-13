@@ -38,8 +38,15 @@ import {
 } from "date-fns";
 import { io } from "socket.io-client";
 import { CookieConsentPopup } from "./components/CookieConsentPopup";
+import {
+  HeatSafetyAlert,
+  WeatherSafetyPanel,
+  type WeatherSafetyStatus,
+} from "./components/WeatherSafety";
 import { getStatusStyles } from "./lib/booking-status";
+import { useLiveNetworkStatus } from "./lib/network-status";
 import { CookiePreferences } from "./pages/CookiePreferences";
+import { NetworkStatusPage } from "./pages/NetworkStatusPage";
 import { TermsAndConditions } from "./pages/TermsAndConditions";
 import {
   BUSINESS_TIME_ZONE,
@@ -49,7 +56,7 @@ import {
 
 type ServiceId = "grooming" | "training" | "daycare" | "boarding";
 type AuthMode = "login" | "register";
-type CurrentView = "home" | "login" | "register" | "forgot-password" | "reset-password" | "dashboard" | "terms" | "cookie-preferences" | "cancel-appointment-confirm" | "delete-appointment-confirm" | "delete-account-confirm" | "delete-account-cancel";
+type CurrentView = "home" | "login" | "register" | "forgot-password" | "reset-password" | "dashboard" | "terms" | "cookie-preferences" | "network-status" | "not-found" | "cancel-appointment-confirm" | "delete-appointment-confirm" | "delete-account-confirm" | "delete-account-cancel";
 type HomeSection = "services" | "booking" | "about";
 
 interface BookingState {
@@ -490,7 +497,15 @@ function homeSectionFromHash(hash: string): HomeSection | null {
     : null;
 }
 
+function isKnownAppPath(pathname: string): boolean {
+  return /^(?:\/|\/reset-password\/?|\/terms-and-conditions\/?|\/cookie-preferences\/?|\/network-status\/?|\/payment-(?:success|cancelled)\/?)$/.test(
+    pathname,
+  );
+}
+
 export default function BookingApp() {
+  const { status: liveNetworkStatus, recheck: recheckNetwork } =
+    useLiveNetworkStatus();
   const [menuOpen, setMenuOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -531,6 +546,9 @@ export default function BookingApp() {
   const [reviewAvatar, setReviewAvatar] = useState<File | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [weather, setWeather] = useState<WeatherSafetyStatus | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(true);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
   const [bookingNotificationRecipient, setBookingNotificationRecipient] = useState<string | null>(null);
   const [bookingEmailDelivered, setBookingEmailDelivered] = useState<boolean | null>(null);
   const [paymentReturn, setPaymentReturn] = useState<PaymentReturnState | null>(() => {
@@ -568,8 +586,12 @@ export default function BookingApp() {
   const [appointmentDeletionToken, setAppointmentDeletionToken] = useState<string | null>(null);
   const [appointmentDeletionCompleted, setAppointmentDeletionCompleted] = useState(false);
 
-  const canProceed = Boolean(selectedDate && booking.service && booking.time);
-  const bookingRequirementsMessage = !selectedDate
+  const canProceed = Boolean(
+    !weather?.bookingBlocked && selectedDate && booking.service && booking.time,
+  );
+  const bookingRequirementsMessage = weather?.bookingBlocked
+    ? "Appointments are temporarily unavailable because of the high temperature."
+    : !selectedDate
     ? "Choose a date to start booking."
     : !booking.service
       ? "Select a service to enable confirmation."
@@ -601,6 +623,35 @@ export default function BookingApp() {
   }, []);
 
   useEffect(() => {
+    void loadWeather();
+    const intervalId = window.setInterval(() => void loadWeather(), 5 * 60_000);
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") {
+        void loadWeather();
+      }
+    }
+
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!weather?.bookingBlocked) {
+      return;
+    }
+    setSelectedDate(null);
+    setAvailableSlots([]);
+    setBooking((current) => ({ ...current, time: null }));
+    setRescheduleDate(null);
+    setRescheduleSlots([]);
+    setRescheduleTime(null);
+  }, [weather?.bookingBlocked]);
+
+  useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const initialSection = homeSectionFromHash(window.location.hash);
     const isPasswordResetPath = /\/reset-password\/?$/.test(window.location.pathname);
@@ -608,6 +659,10 @@ export default function BookingApp() {
     const isCookiePreferencesPath = /\/cookie-preferences\/?$/.test(
       window.location.pathname,
     );
+    const isNetworkStatusPath = /\/network-status\/?$/.test(
+      window.location.pathname,
+    );
+    const isNotFoundPath = !isKnownAppPath(window.location.pathname);
     const initialPasswordResetToken = isPasswordResetPath
       ? searchParams.get("token")
       : null;
@@ -659,11 +714,19 @@ export default function BookingApp() {
     if (!deletionActionView && !isPasswordResetPath && isCookiePreferencesPath) {
       setCurrentView("cookie-preferences");
     }
+    if (!deletionActionView && !isPasswordResetPath && isNetworkStatusPath) {
+      setCurrentView("network-status");
+    }
+    if (!deletionActionView && !isPasswordResetPath && isNotFoundPath) {
+      setCurrentView("not-found");
+    }
     if (
       !deletionActionView &&
       !isPasswordResetPath &&
       !isTermsPath &&
       !isCookiePreferencesPath &&
+      !isNetworkStatusPath &&
+      !isNotFoundPath &&
       initialSection
     ) {
       setCurrentView("home");
@@ -683,6 +746,8 @@ export default function BookingApp() {
       !isPasswordResetPath &&
       !isTermsPath &&
       !isCookiePreferencesPath &&
+      !isNetworkStatusPath &&
+      !isNotFoundPath &&
       !initialSection
     ) {
       setCurrentView("dashboard");
@@ -760,12 +825,22 @@ export default function BookingApp() {
         return;
       }
 
+      if (/\/network-status\/?$/.test(window.location.pathname)) {
+        setCurrentView("network-status");
+        setMenuOpen(false);
+        return;
+      }
+
       if (window.location.pathname === "/") {
         const section = homeSectionFromHash(window.location.hash);
         setCurrentView("home");
         setMenuOpen(false);
         setSectionTarget(section);
+        return;
       }
+
+      setCurrentView("not-found");
+      setMenuOpen(false);
     }
 
     window.addEventListener("popstate", handlePopState);
@@ -991,14 +1066,35 @@ export default function BookingApp() {
   }, [token]);
 
   useEffect(() => {
-    if (!selectedDate || !booking.service) {
+    if (weather?.bookingBlocked || !selectedDate || !booking.service) {
       setAvailableSlots([]);
       return;
     }
 
     const dateKey = format(selectedDate, "yyyy-MM-dd");
     void fetchAvailableSlots(dateKey, booking.service);
-  }, [selectedDate, booking.service]);
+  }, [selectedDate, booking.service, weather?.bookingBlocked]);
+
+  async function loadWeather() {
+    setWeatherLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/weather`);
+      const data = (await response.json().catch(() => null)) as
+        | (WeatherSafetyStatus & { message?: string })
+        | null;
+      if (!response.ok || !data?.location) {
+        throw new Error(
+          data?.message || "Current weather information is temporarily unavailable.",
+        );
+      }
+      setWeather(data);
+      setWeatherError(null);
+    } catch (error) {
+      setWeatherError((error as Error).message);
+    } finally {
+      setWeatherLoading(false);
+    }
+  }
 
   async function loadAppointments() {
     if (!token) {
@@ -1519,7 +1615,7 @@ export default function BookingApp() {
   }
 
   function handleDateClick(date: Date) {
-    if (isDateDisabled(date)) {
+    if (weather?.bookingBlocked || isDateDisabled(date)) {
       return;
     }
     setSelectedDate(date);
@@ -1550,6 +1646,12 @@ export default function BookingApp() {
 
   async function handleBookingSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (weather?.bookingBlocked) {
+      setFeedback(
+        "Appointments are temporarily unavailable because of the high temperature.",
+      );
+      return;
+    }
     if (!token || !selectedDate || !booking.service || !booking.time) {
       return;
     }
@@ -1748,14 +1850,14 @@ export default function BookingApp() {
   }
 
   useEffect(() => {
-    if (!rescheduleDate || !rescheduleServiceId || !rescheduleAppointmentId || !token) {
+    if (weather?.bookingBlocked || !rescheduleDate || !rescheduleServiceId || !rescheduleAppointmentId || !token) {
       setRescheduleSlots([]);
       return;
     }
 
     const dateKey = format(rescheduleDate, "yyyy-MM-dd");
     void fetchRescheduleSlots(dateKey, rescheduleAppointmentId);
-  }, [rescheduleDate, rescheduleServiceId, rescheduleAppointmentId, token]);
+  }, [rescheduleDate, rescheduleServiceId, rescheduleAppointmentId, token, weather?.bookingBlocked]);
 
   async function fetchRescheduleSlots(dateKey: string, appointmentId: string) {
     try {
@@ -1854,7 +1956,26 @@ export default function BookingApp() {
       </nav>
 
       <div className="pt-16">
-        {currentView === "cookie-preferences" ? (
+        {liveNetworkStatus ? (
+          <NetworkStatusPage
+            state={liveNetworkStatus}
+            onNavigateHome={navigateHome}
+            onRetry={recheckNetwork}
+          />
+        ) : currentView === "network-status" ? (
+          <NetworkStatusPage
+            state="connection-restored"
+            onNavigateHome={navigateHome}
+            onRetry={recheckNetwork}
+          />
+        ) : currentView === "not-found" ? (
+          <NetworkStatusPage
+            state="not-found"
+            requestedPath={window.location.pathname}
+            onNavigateHome={navigateHome}
+            onRetry={() => window.location.reload()}
+          />
+        ) : currentView === "cookie-preferences" ? (
           <CookiePreferences onNavigateHome={navigateHome} />
         ) : currentView === "terms" ? (
           <TermsAndConditions onNavigateHome={navigateHome} />
@@ -2348,14 +2469,15 @@ export default function BookingApp() {
                           ) : null}
                           {isRescheduling ? (
                             <div className="mt-4 rounded-2xl border border-border bg-card p-4">
-                              <input type="date" value={rescheduleDate ? format(rescheduleDate, "yyyy-MM-dd") : ""} onChange={(event) => setRescheduleDate(event.target.value ? parseDateInput(event.target.value) : null)} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" />
+                              <input type="date" value={rescheduleDate ? format(rescheduleDate, "yyyy-MM-dd") : ""} onChange={(event) => setRescheduleDate(event.target.value ? parseDateInput(event.target.value) : null)} disabled={weather?.bookingBlocked} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50" />
+                              {weather?.bookingBlocked ? <p className="mt-3 text-sm text-red-700">Rescheduling is temporarily unavailable because of the high temperature.</p> : null}
                               <div className="mt-3 grid grid-cols-2 gap-2">
                                 {rescheduleSlots.length === 0 ? <p className="col-span-2 text-sm text-muted-foreground">Choose a date to see available times.</p> : rescheduleSlots.map((slot) => (
                                   <button key={slot} onClick={() => setRescheduleTime(slot)} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${rescheduleTime === slot ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background"}`}>{formatSlotLabel(slot)}</button>
                                 ))}
                               </div>
                               <div className="mt-3 flex gap-2">
-                                <button onClick={() => handleRescheduleAppointment(appointment.id)} className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">Save reschedule</button>
+                                <button onClick={() => handleRescheduleAppointment(appointment.id)} disabled={weather?.bookingBlocked} className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">Save reschedule</button>
                                 <button onClick={() => { setRescheduleAppointmentId(null); setRescheduleServiceId(null); setRescheduleDate(null); setRescheduleTime(null); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Cancel</button>
                               </div>
                             </div>
@@ -2402,10 +2524,11 @@ export default function BookingApp() {
                       <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-muted-foreground">
                         {['Su','Mo','Tu','We','Th','Fr','Sa'].map((day) => <div key={day}>{day}</div>)}
                       </div>
+                      {weather?.bookingBlocked ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">All appointment dates are temporarily unavailable and will reopen after the temperature falls below 25°C.</div> : null}
                       <div className="mt-2 grid grid-cols-7 gap-1">
                         {calDays.map((day, index) => {
                           const inMonth = isSameMonth(day, currentMonth);
-                          const disabled = isDateDisabled(day);
+                          const disabled = Boolean(weather?.bookingBlocked) || isDateDisabled(day);
                           const selected = selectedDate !== null && isSameDay(day, selectedDate);
 
                           return (
@@ -2608,6 +2731,13 @@ export default function BookingApp() {
               </div>
             </section>
 
+            <WeatherSafetyPanel
+              weather={weather}
+              loading={weatherLoading}
+              error={weatherError}
+              onRefresh={() => void loadWeather()}
+            />
+
             <section id="booking" className="py-24 px-6">
               <div className="max-w-6xl mx-auto">
                 <div className="mb-14">
@@ -2654,10 +2784,11 @@ export default function BookingApp() {
                         <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-muted-foreground">
                           {['Su','Mo','Tu','We','Th','Fr','Sa'].map((day) => <div key={day}>{day}</div>)}
                         </div>
+                        {weather?.bookingBlocked ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">All appointment dates are temporarily unavailable and will reopen after the temperature falls below 25°C.</div> : null}
                         <div className="mt-2 grid grid-cols-7 gap-1">
                           {calDays.map((day, index) => {
                             const inMonth = isSameMonth(day, currentMonth);
-                            const disabled = isDateDisabled(day);
+                            const disabled = Boolean(weather?.bookingBlocked) || isDateDisabled(day);
                             const selected = selectedDate !== null && isSameDay(day, selectedDate);
 
                             return (
@@ -2784,8 +2915,15 @@ export default function BookingApp() {
           </>
         )}
       </div>
+      <HeatSafetyAlert weather={liveNetworkStatus ? null : weather} />
       <CookieConsentPopup
-        hidden={currentView === "cookie-preferences"}
+        hidden={
+          liveNetworkStatus !== null ||
+          weather?.heatWarning === true ||
+          currentView === "cookie-preferences" ||
+          currentView === "network-status" ||
+          currentView === "not-found"
+        }
         onCustomise={navigateToCookiePreferences}
       />
     </div>

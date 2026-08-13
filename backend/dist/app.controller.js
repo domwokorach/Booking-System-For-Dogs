@@ -24,6 +24,7 @@ let AppController = class AppController {
                 users: "/api/users",
                 files: "/api/files",
                 reviews: "/api/reviews",
+                weather: "/api/weather",
             },
         };
     }
