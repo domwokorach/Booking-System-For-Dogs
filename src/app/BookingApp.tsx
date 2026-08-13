@@ -2465,7 +2465,7 @@ export default function BookingApp() {
                 <img src="https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=900&h=1100&fit=crop&auto=format" alt="Happy golden retriever" className="absolute inset-0 w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
                 <div
-                  className="absolute bottom-8 left-8 bg-white rounded-2xl shadow-2xl p-5 max-w-[220px]"
+                  className="absolute bottom-8 left-8 bg-white rounded-2xl shadow-2xl p-5 max-w-[320px]"
                   role="status"
                   aria-live="polite"
                 >
@@ -2499,6 +2499,14 @@ export default function BookingApp() {
                     {nextAppointmentStatus?.label ??
                       (user ? "Nothing scheduled" : "Your appointment time will appear here")}
                   </div>
+                  {user ? (
+                    <div className="mt-3 border-t border-border pt-3 text-xs leading-5 text-muted-foreground">
+                      <span className="font-semibold text-foreground">Customer:</span>{" "}
+                      <span className="font-mono">{user.customerReference}</span>{" "}
+                      <span aria-hidden="true">—</span>{" "}
+                      <span>{user.firstName} {user.surname}</span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </section>
