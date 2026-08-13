@@ -33,6 +33,18 @@ export default defineConfig({
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'date-vendor': ['date-fns'],
+          'icons-vendor': ['lucide-react'],
+          'realtime-vendor': ['socket.io-client'],
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': {
