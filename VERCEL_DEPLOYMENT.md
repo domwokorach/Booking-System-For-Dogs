@@ -106,6 +106,7 @@ checkout.session.completed
 checkout.session.async_payment_succeeded
 checkout.session.async_payment_failed
 checkout.session.expired
+payment_intent.succeeded
 refund.created
 refund.updated
 refund.failed

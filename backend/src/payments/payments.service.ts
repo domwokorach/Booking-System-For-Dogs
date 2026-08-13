@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
@@ -36,6 +37,7 @@ const APPROVAL_PROCESSING_TIMEOUT_MS = 5 * 60 * 1000;
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
   private readonly stripe = env.STRIPE_SECRET_KEY.trim()
     ? new Stripe(env.STRIPE_SECRET_KEY.trim())
     : null;
@@ -218,6 +220,8 @@ export class PaymentsService {
       throw new BadRequestException("Invalid Stripe webhook signature.");
     }
 
+    this.logger.log(`Stripe webhook received: ${event.type} (${event.id})`);
+
     if (
       event.type === "checkout.session.completed" ||
       event.type === "checkout.session.async_payment_succeeded"
@@ -226,6 +230,8 @@ export class PaymentsService {
       if (session.payment_status !== "unpaid") {
         await this.fulfillPaidSession(session);
       }
+    } else if (event.type === "payment_intent.succeeded") {
+      await this.fulfillPaidPaymentIntent(event.data.object);
     } else if (event.type === "checkout.session.async_payment_failed") {
       await this.markUnsuccessfulSession(event.data.object, PaymentStatus.Failed);
     } else if (event.type === "checkout.session.expired") {
@@ -242,7 +248,26 @@ export class PaymentsService {
   }
 
   async getSessionStatus(user: AuthUser, sessionId: string) {
-    const payment = await this.findOwnedPayment(user.id, sessionId);
+    let payment = await this.findOwnedPayment(user.id, sessionId);
+
+    if (payment.status === PaymentStatus.Pending) {
+      try {
+        const session = await this.requireStripe().checkout.sessions.retrieve(
+          sessionId,
+        );
+        if (session.payment_status !== "unpaid") {
+          await this.fulfillPaidSession(session);
+          payment = await this.findOwnedPayment(user.id, sessionId);
+        } else if (session.status === "expired") {
+          await this.markUnsuccessfulSession(session, PaymentStatus.Expired);
+          payment = await this.findOwnedPayment(user.id, sessionId);
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Unable to reconcile Checkout Session ${sessionId}: ${error instanceof Error ? error.message : "unknown Stripe error"}`,
+        );
+      }
+    }
 
     return {
       paymentStatus: payment.status.toUpperCase(),
@@ -764,10 +789,15 @@ export class PaymentsService {
     ]);
   }
 
-  private async fulfillPaidSession(session: Stripe.Checkout.Session) {
+  private async fulfillPaidSession(
+    session: Stripe.Checkout.Session,
+  ): Promise<boolean> {
     const payment = await this.findPaymentForSession(session);
     if (!payment) {
-      throw new BadRequestException("Stripe payment record not found.");
+      this.logger.warn(
+        `Ignoring Checkout Session ${session.id}: no Pawside payment record matched.`,
+      );
+      return false;
     }
     if (
       session.amount_total !== payment.amountPence ||
@@ -784,26 +814,78 @@ export class PaymentsService {
       typeof session.invoice === "string"
         ? session.invoice
         : session.invoice?.id;
+    return this.fulfillPaidPaymentRecord(payment, {
+      stripeCheckoutSessionId: session.id,
+      stripePaymentIntentId: paymentIntentId,
+      stripeInvoiceId: invoiceId,
+    });
+  }
+
+  private async fulfillPaidPaymentIntent(
+    paymentIntent: Stripe.PaymentIntent,
+  ): Promise<boolean> {
+    const paymentId = paymentIntent.metadata?.paymentId;
+    const payment = await this.prisma.payment.findFirst({
+      where: {
+        OR: [
+          { stripePaymentIntentId: paymentIntent.id },
+          ...(paymentId ? [{ id: paymentId }] : []),
+        ],
+      },
+    });
+    if (!payment) {
+      this.logger.warn(
+        `Ignoring PaymentIntent ${paymentIntent.id}: no Pawside payment metadata matched.`,
+      );
+      return false;
+    }
+    if (
+      paymentIntent.amount_received !== payment.amountPence ||
+      paymentIntent.currency.toLowerCase() !== payment.currency.toLowerCase()
+    ) {
+      throw new BadRequestException("Stripe payment amount does not match.");
+    }
+
+    return this.fulfillPaidPaymentRecord(payment, {
+      stripePaymentIntentId: paymentIntent.id,
+    });
+  }
+
+  private async fulfillPaidPaymentRecord(
+    payment: {
+      id: string;
+      appointmentId: string;
+      userId: string;
+      amountPence: number;
+      currency: string;
+    },
+    stripeReferences: {
+      stripeCheckoutSessionId?: string;
+      stripePaymentIntentId?: string;
+      stripeInvoiceId?: string;
+    },
+  ): Promise<boolean> {
     const result = await this.prisma.$transaction(async (transaction) => {
       const claimed = await transaction.payment.updateMany({
         where: { id: payment.id, status: PaymentStatus.Pending },
         data: {
           status: PaymentStatus.Paid,
-          stripeCheckoutSessionId: session.id,
-          stripePaymentIntentId: paymentIntentId,
-          stripeInvoiceId: invoiceId,
+          stripeCheckoutSessionId:
+            stripeReferences.stripeCheckoutSessionId,
+          stripePaymentIntentId: stripeReferences.stripePaymentIntentId,
+          stripeInvoiceId: stripeReferences.stripeInvoiceId,
           paidAt: new Date(),
           failedAt: null,
         },
       });
-      if (claimed.count === 0 && invoiceId) {
+      if (claimed.count === 0 && stripeReferences.stripeInvoiceId) {
         await transaction.payment.updateMany({
           where: {
             id: payment.id,
             status: PaymentStatus.Paid,
             stripeInvoiceId: null,
           },
-          data: { stripeInvoiceId: invoiceId },
+          data: { stripeInvoiceId: stripeReferences.stripeInvoiceId },
         });
       }
       const confirmed = await transaction.appointment.updateMany({
@@ -833,7 +915,7 @@ export class PaymentsService {
     });
 
     if (!result?.shouldNotify) {
-      return;
+      return result !== null;
     }
     const { appointment } = result;
     this.realtime.emitToUser(appointment.userId, "appointments:confirmed", {
@@ -852,6 +934,7 @@ export class PaymentsService {
       currency: payment.currency,
       paymentStatus: PaymentStatus.Paid.toUpperCase(),
     });
+    return true;
   }
 
   private async markUnsuccessfulSession(

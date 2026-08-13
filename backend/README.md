@@ -214,15 +214,25 @@ both Checkout and refund lifecycle events:
 
 ```bash
 stripe listen \
-  --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,checkout.session.expired,refund.created,refund.updated,refund.failed \
+  --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,checkout.session.expired,payment_intent.succeeded,refund.created,refund.updated,refund.failed \
   --forward-to http://localhost:3000/api/payments/webhook
 ```
 
+Run `stripe login` first if `stripe whoami --format json` reports
+`"authenticated": false`. Copy the fresh `whsec_...` printed by each
+`stripe listen` session into `backend/.env`, then restart NestJS. Use
+`stripe trigger checkout.session.completed` only to verify delivery and
+signature handling; that generated fixture is not linked to a Pawside booking.
+To verify the database transition, complete a real Pawside test Checkout with
+`4242 4242 4242 4242` while the listener is running.
+
 An authenticated customer starts or resumes Checkout with
 `POST /api/payments/checkout/:bookingId`. Stripe redirects back to the frontend,
-but that return page is informational only: only a signature-verified Stripe
-webhook changes the payment to `PAID` and the appointment to `CONFIRMED`. The
-confirmation email is sent after that database transaction succeeds.
+and a signature-verified webhook is the primary path that changes the payment
+to `PAID` and the appointment to `CONFIRMED`. As an immediate recovery path,
+the authenticated success page also retrieves its server-created Checkout
+Session from Stripe and performs the same idempotent database transition. The
+confirmation email is sent only after that database transaction succeeds.
 
 Cancelling an appointment first changes it to `CANCELLATION_PENDING`, creates a
 single-use approval token, and emails an administrator approval link. The
