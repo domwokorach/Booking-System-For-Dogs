@@ -14,6 +14,11 @@ export class PublicReviewsController {
   list() {
     return this.reviews.listPublic();
   }
+
+  @Get("stats")
+  stats() {
+    return this.reviews.getPublicStats();
+  }
 }
 
 @Controller("api/reviews")

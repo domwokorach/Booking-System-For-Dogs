@@ -776,16 +776,16 @@ export default function App() {
             </h2>
             <dl className="mt-8 grid gap-3 sm:grid-cols-3" aria-label="Pawside customer review statistics">
               <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-4">
-                <dt className="order-2 mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#A8BFA9]">Customer Reviews</dt>
-                <dd className="order-1 text-2xl font-bold font-serif text-white">500+</dd>
+                <dt className="order-2 mt-2 text-sm leading-5 text-[#A8BFA9]">Genuine comments from Pawside customers</dt>
+                <dd className="order-1 text-2xl font-bold font-serif text-white">0 Customer Reviews</dd>
               </div>
               <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-4">
-                <dt className="order-2 mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#A8BFA9]">Real-Time Rating</dt>
-                <dd className="order-1 text-2xl font-bold font-serif text-white">5★</dd>
+                <dt className="order-2 mt-2 text-sm leading-5 text-[#A8BFA9]">Updated in real time based on customer ratings</dt>
+                <dd className="order-1 text-2xl font-bold font-serif text-white">— ★ Rating</dd>
               </div>
               <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-4">
-                <dt className="order-2 mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#A8BFA9]">In Business Since</dt>
-                <dd className="order-1 text-2xl font-bold font-serif text-white">2026</dd>
+                <dt className="order-2 mt-2 text-sm leading-5 text-[#A8BFA9]">The year Pawside started operating</dt>
+                <dd className="order-1 text-2xl font-bold font-serif text-white">In Business Since 2026</dd>
               </div>
             </dl>
           </div>

@@ -104,6 +104,11 @@ interface ReviewRecord {
   createdAt: string;
 }
 
+interface ReviewStats {
+  count: number;
+  averageRating: number | null;
+}
+
 interface AppointmentMutationResponse {
   id?: string;
   serviceId?: string | null;
@@ -514,6 +519,10 @@ export default function BookingApp() {
   const [token, setToken] = useState<string | null>(null);
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
   const [reviews, setReviews] = useState<ReviewRecord[]>([]);
+  const [reviewStats, setReviewStats] = useState<ReviewStats>({
+    count: 0,
+    averageRating: null,
+  });
   const [reviewingAppointmentId, setReviewingAppointmentId] = useState<string | null>(null);
   const [reviewForm, setReviewForm] = useState(EMPTY_REVIEW_FORM);
   const [reviewAvatar, setReviewAvatar] = useState<File | null>(null);
@@ -981,13 +990,22 @@ export default function BookingApp() {
 
   async function loadReviews() {
     try {
-      const response = await fetch(`${API_URL}/api/reviews`);
-      if (!response.ok) {
+      const [reviewsResponse, statsResponse] = await Promise.all([
+        fetch(`${API_URL}/api/reviews`),
+        fetch(`${API_URL}/api/reviews/stats`),
+      ]);
+      if (!reviewsResponse.ok || !statsResponse.ok) {
         throw new Error("Unable to load reviews.");
       }
-      setReviews((await response.json()) as ReviewRecord[]);
+      const [nextReviews, nextStats] = await Promise.all([
+        reviewsResponse.json() as Promise<ReviewRecord[]>,
+        statsResponse.json() as Promise<ReviewStats>,
+      ]);
+      setReviews(nextReviews);
+      setReviewStats(nextStats);
     } catch {
       setReviews([]);
+      setReviewStats({ count: 0, averageRating: null });
     }
   }
 
@@ -1036,6 +1054,18 @@ export default function BookingApp() {
       }
 
       setReviews((current) => [data, ...current.filter((review) => review.id !== data.id)].slice(0, 12));
+      setReviewStats((current) => ({
+        count: current.count + 1,
+        averageRating:
+          current.averageRating === null
+            ? data.rating
+            : Math.round(
+                ((current.averageRating * current.count + data.rating) /
+                  (current.count + 1)) *
+                  10,
+              ) / 10,
+      }));
+      void loadReviews();
       setAppointments((current) =>
         current.map((appointment) =>
           appointment.id === reviewingAppointmentId
@@ -2580,16 +2610,16 @@ export default function BookingApp() {
                   <p className="mt-4 max-w-2xl text-sm leading-6 text-[#A8BFA9]">Every review shown here was submitted by a registered customer after a completed appointment.</p>
                   <dl className="mt-8 grid gap-3 sm:grid-cols-3" aria-label="Pawside customer review statistics">
                     <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-4">
-                      <dt className="order-2 mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#A8BFA9]">Customer Reviews</dt>
-                      <dd className="order-1 text-2xl font-bold font-serif text-white">500+</dd>
+                      <dt className="order-2 mt-2 text-sm leading-5 text-[#A8BFA9]">Genuine comments from Pawside customers</dt>
+                      <dd className="order-1 text-2xl font-bold font-serif text-white">{reviewStats.count} Customer {reviewStats.count === 1 ? "Review" : "Reviews"}</dd>
                     </div>
                     <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-4">
-                      <dt className="order-2 mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#A8BFA9]">Real-Time Rating</dt>
-                      <dd className="order-1 text-2xl font-bold font-serif text-white">5★</dd>
+                      <dt className="order-2 mt-2 text-sm leading-5 text-[#A8BFA9]">Updated in real time based on customer ratings</dt>
+                      <dd className="order-1 text-2xl font-bold font-serif text-white">{reviewStats.averageRating === null ? "—" : reviewStats.averageRating.toFixed(1)} ★ Rating</dd>
                     </div>
                     <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-4">
-                      <dt className="order-2 mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#A8BFA9]">In Business Since</dt>
-                      <dd className="order-1 text-2xl font-bold font-serif text-white">2026</dd>
+                      <dt className="order-2 mt-2 text-sm leading-5 text-[#A8BFA9]">The year Pawside started operating</dt>
+                      <dd className="order-1 text-2xl font-bold font-serif text-white">In Business Since 2026</dd>
                     </div>
                   </dl>
                 </div>

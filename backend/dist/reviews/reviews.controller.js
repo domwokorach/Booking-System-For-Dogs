@@ -23,6 +23,9 @@ let PublicReviewsController = class PublicReviewsController {
     list() {
         return this.reviews.listPublic();
     }
+    stats() {
+        return this.reviews.getPublicStats();
+    }
 };
 __decorate([
     Get(),
@@ -30,6 +33,12 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], PublicReviewsController.prototype, "list", null);
+__decorate([
+    Get("stats"),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], PublicReviewsController.prototype, "stats", null);
 PublicReviewsController = __decorate([
     Controller("api/reviews"),
     __metadata("design:paramtypes", [ReviewsService])

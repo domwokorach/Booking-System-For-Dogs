@@ -35,6 +35,21 @@ export class ReviewsService {
     });
   }
 
+  async getPublicStats() {
+    const stats = await this.prisma.review.aggregate({
+      _count: { _all: true },
+      _avg: { rating: true },
+    });
+
+    return {
+      count: stats._count._all,
+      averageRating:
+        stats._avg.rating === null
+          ? null
+          : Math.round(stats._avg.rating * 10) / 10,
+    };
+  }
+
   async create(customer: AuthUser, body: CreateReviewInput) {
     try {
       return await this.prisma.$transaction(async (transaction) => {
