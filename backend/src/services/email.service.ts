@@ -117,10 +117,6 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#039;");
 }
 
-export function resolveBookingRecipient(defaultRecipient: string): string {
-  return env.BOOKING_EMAIL_TO.trim() || defaultRecipient;
-}
-
 function resolveBookingRecipients(userRecipient: string): string[] {
   return [...new Set([userRecipient, env.BOOKING_EMAIL_TO.trim()].filter(Boolean))];
 }
@@ -165,7 +161,11 @@ export async function sendBookingCancellationEmail(data: BookingEmailData) {
 }
 
 export async function sendCancellationApprovalRequestEmail(
-  data: BookingEmailData & { approvalUrl: string; expiresAt: Date },
+  data: BookingEmailData & {
+    approvalUrl: string;
+    expiresAt: Date;
+    adminRecipient: string;
+  },
 ) {
   const safeApprovalUrl = escapeHtml(data.approvalUrl);
   const safeBookingId = escapeHtml(data.bookingId ?? "Not available");
@@ -181,7 +181,7 @@ export async function sendCancellationApprovalRequestEmail(
     }),
     sendMailSafely({
       from: env.EMAIL_FROM,
-      to: resolveBookingRecipient(data.to),
+      to: data.adminRecipient,
       subject: "Booking cancellation approval requested",
       text: `A booking cancellation request needs administrator approval.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nCustomer: ${data.firstName}\nSelected service: ${formatService(data.service)}\nAppointment date: ${formatDate(data.appointmentDateTime)}\nAppointment time: ${formatTime(data.appointmentDateTime)}${data.amountPence !== undefined ? `\nRefund amount: ${amount}` : ""}\n\nApprove cancellation: ${data.approvalUrl}\n\nThis secure, single-use link expires at ${formatDateTime(data.expiresAt)}.`,
       html: `<p>A booking cancellation request needs administrator approval.</p><p><strong>Booking ID:</strong> ${safeBookingId}</p><p><strong>Selected service:</strong> ${safeService}</p>${data.amountPence !== undefined ? `<p><strong>Refund amount:</strong> ${escapeHtml(amount)}</p>` : ""}<p><a href="${safeApprovalUrl}" style="display:inline-block;padding:12px 18px;background:#b91c1c;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Review cancellation request</a></p><p>This secure, single-use link expires in 30 minutes.</p>`,
@@ -237,7 +237,7 @@ export async function sendRefundFailureEmail(data: BookingEmailData) {
 }
 
 export async function sendDeletionRequestEmail(
-  data: BookingEmailData & { approvalUrl: string },
+  data: BookingEmailData & { approvalUrl: string; adminRecipient: string },
 ) {
   const safeApprovalUrl = escapeHtml(data.approvalUrl);
   const safeBookingId = escapeHtml(data.bookingId ?? "Not available");
@@ -245,7 +245,7 @@ export async function sendDeletionRequestEmail(
 
   return sendMailSafely({
     from: env.EMAIL_FROM,
-    to: resolveBookingRecipient(data.to),
+    to: data.adminRecipient,
     subject: "Deletion approval requested",
     text: `A deletion request has been submitted for an appointment and needs administrator approval.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nCustomer: ${data.firstName}\nSelected service: ${formatService(data.service)}\nAppointment date: ${formatDate(data.appointmentDateTime)}\nAppointment time: ${formatTime(data.appointmentDateTime)}\nBooking status: ${data.status}.\n\nApprove deletion: ${data.approvalUrl}\n\nThis single-use link expires in 30 minutes.`,
     html: `<p>An appointment deletion request needs administrator approval.</p><p><strong>Booking ID:</strong> ${safeBookingId}</p><p><strong>Selected service:</strong> ${safeService}</p><p><a href="${safeApprovalUrl}" style="display:inline-block;padding:12px 18px;background:#b91c1c;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Review deletion request</a></p><p>This single-use link expires in 30 minutes.</p>`,
@@ -273,7 +273,7 @@ type AccountDeletionRequestEmailData = {
   requestId: string;
   confirmationUrl: string;
   cancellationUrl: string;
-  adminRecipient?: string;
+  adminRecipient: string;
 };
 
 export async function sendAccountDeletionRequestEmails(data: AccountDeletionRequestEmailData) {
@@ -282,11 +282,9 @@ export async function sendAccountDeletionRequestEmails(data: AccountDeletionRequ
   const safeCancellationUrl = escapeHtml(data.cancellationUrl);
   const safeRequestId = escapeHtml(data.requestId);
   const safeUserEmail = escapeHtml(data.to);
-  const recipient = data.adminRecipient?.trim() || data.to;
-
   return sendMailSafely({
     from: env.EMAIL_FROM,
-    to: recipient,
+    to: data.adminRecipient,
     subject: "Account deletion approval requested",
     text: `Hello ${data.firstName},\n\nA user requested deletion of the Pawside account associated with ${data.to}.\n\nRequest ID: ${data.requestId}\nStatus: PENDING\n\nApprove deletion: ${data.confirmationUrl}\nReject request: ${data.cancellationUrl}\n\nBoth links expire in 30 minutes. The account remains active until approval is granted.`,
     html: `<p>Hello ${safeFirstName},</p><p>A user requested deletion of the Pawside account associated with ${safeUserEmail}.</p><p><strong>Request ID:</strong> ${safeRequestId}</p><p><strong>Status: PENDING</strong></p><p><a href="${safeConfirmationUrl}" style="display:inline-block;padding:12px 18px;background:#b91c1c;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Approve deletion</a></p><p><a href="${safeCancellationUrl}" style="display:inline-block;padding:12px 18px;background:#166534;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Reject request</a></p><p>Both links expire in 30 minutes. The account remains active until approval is granted.</p>`,

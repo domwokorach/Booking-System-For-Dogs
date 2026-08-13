@@ -8,8 +8,8 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 import { createHash, randomBytes } from "node:crypto";
-import { BadRequestException, ConflictException, Injectable, NotFoundException, } from "@nestjs/common";
-import { AppointmentStatus, Prisma } from "@prisma/client";
+import { BadRequestException, ConflictException, Injectable, NotFoundException, ServiceUnavailableException, } from "@nestjs/common";
+import { AppointmentStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { env } from "../config/env.js";
 import { EmailService } from "../notifications/email.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -25,6 +25,13 @@ const bookingUserSelect = {
     address: true,
     mobileNumber: true,
 };
+const RETAINED_PAYMENT_STATUSES = [
+    PaymentStatus.Pending,
+    PaymentStatus.Paid,
+    PaymentStatus.RefundPending,
+    PaymentStatus.Refunded,
+    PaymentStatus.RefundFailed,
+];
 let BookingsService = class BookingsService {
     prisma;
     appointmentSlots;
@@ -114,8 +121,9 @@ let BookingsService = class BookingsService {
     }
     async availableForReschedule(user, id, query) {
         const existing = await this.findOwnedWithUser(user.id, id);
-        if (existing.status === AppointmentStatus.Cancelled) {
-            throw new BadRequestException("Cancelled bookings cannot be rescheduled.");
+        if (existing.status === AppointmentStatus.Cancelled ||
+            existing.status === AppointmentStatus.CancellationPending) {
+            throw new BadRequestException("Cancelled bookings and pending cancellation requests cannot be rescheduled.");
         }
         const service = await this.resolveActiveService(query.serviceId);
         const availableTimes = await this.appointmentSlots.getAvailableTimes(query.date, service.durationMinutes, existing.id);
@@ -139,8 +147,9 @@ let BookingsService = class BookingsService {
     }
     async confirm(user, id) {
         const existing = await this.findOwnedWithUser(user.id, id);
-        if (existing.status === AppointmentStatus.Cancelled) {
-            throw new BadRequestException("Cancelled appointments cannot be confirmed.");
+        if (existing.status === AppointmentStatus.Cancelled ||
+            existing.status === AppointmentStatus.CancellationPending) {
+            throw new BadRequestException("Cancelled appointments and pending cancellation requests cannot be confirmed.");
         }
         if (existing.status === AppointmentStatus.Confirmed) {
             return toBookingMutationResponse(existing, "Appointment confirmed successfully");
@@ -207,8 +216,9 @@ let BookingsService = class BookingsService {
         const slot = parseSlotId(body.slotId);
         const service = await this.resolveActiveService(slot.serviceId);
         const existing = await this.findOwnedWithUser(user.id, id);
-        if (existing.status === AppointmentStatus.Cancelled) {
-            throw new BadRequestException("Cancelled bookings cannot be rescheduled.");
+        if (existing.status === AppointmentStatus.Cancelled ||
+            existing.status === AppointmentStatus.CancellationPending) {
+            throw new BadRequestException("Cancelled bookings and pending cancellation requests cannot be rescheduled.");
         }
         let updated;
         try {
@@ -258,50 +268,28 @@ let BookingsService = class BookingsService {
         return toBookingMutationResponse(updated, "Appointment rescheduled successfully");
     }
     async cancel(user, id) {
-        const refund = await this.payments.cancelAndRefund(user, id);
-        if (refund) {
-            return refund;
-        }
-        const existing = await this.findOwnedWithUser(user.id, id);
-        if (existing.status === AppointmentStatus.Cancelled) {
-            return toBookingMutationResponse(existing, "Appointment cancelled successfully");
-        }
-        const updated = await this.prisma.$transaction(async (transaction) => {
-            const changed = await transaction.appointment.updateMany({
-                where: {
-                    id,
-                    userId: user.id,
-                    status: existing.status,
-                    dateTime: existing.dateTime,
-                    updatedAt: existing.updatedAt,
-                },
-                data: {
-                    status: AppointmentStatus.Cancelled,
-                    cancelledAt: new Date(),
-                },
-            });
-            if (changed.count !== 1) {
-                throw new ConflictException("The booking state changed. Please retry.");
-            }
-            return this.findOwnedWithUser(user.id, id, transaction);
-        });
-        this.realtime.emitToUser(user.id, "appointments:cancelled", {
-            appointmentId: updated.id,
-            dateTime: updated.dateTime,
-            status: updated.status,
-        });
-        await this.email.sendBookingCancellation({
-            to: updated.user.email,
-            firstName: updated.user.firstName,
-            bookingId: updated.id,
-            service: updated.service,
-            appointmentDateTime: updated.dateTime,
-            status: toApiStatus(updated.status),
-        });
-        return toBookingMutationResponse(updated, "Appointment cancelled successfully");
+        return this.payments.requestCancellation(user, id);
     }
     async requestDeletion(user, id) {
-        await this.findOwnedWithUser(user.id, id);
+        const administratorEmail = env.BOOKING_EMAIL_TO.trim();
+        if (!administratorEmail) {
+            throw new ServiceUnavailableException("Deletion approval is unavailable because the administrator email is not configured.");
+        }
+        const existing = await this.findOwnedWithUser(user.id, id);
+        if (existing.status === AppointmentStatus.CancellationPending) {
+            throw new ConflictException("This booking cannot be deleted while cancellation approval is pending.");
+        }
+        const unresolvedRefund = await this.prisma.payment.count({
+            where: {
+                appointmentId: id,
+                status: {
+                    in: [...RETAINED_PAYMENT_STATUSES],
+                },
+            },
+        });
+        if (unresolvedRefund > 0) {
+            throw new ConflictException("This booking cannot be deleted because its payment record must be retained. Cancel any paid booking through the refund workflow.");
+        }
         const rawToken = randomBytes(32).toString("hex");
         const tokenHash = this.hashAppointmentDeletionToken(rawToken);
         const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
@@ -334,6 +322,7 @@ let BookingsService = class BookingsService {
             appointmentDateTime: updated.dateTime,
             status: toApiStatus(updated.status),
             approvalUrl,
+            adminRecipient: administratorEmail,
         });
         return {
             success: true,

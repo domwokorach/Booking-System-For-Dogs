@@ -53,7 +53,18 @@ export class UsersService {
         userId: storedRequest.user.id,
         OR: [
           { status: AppointmentStatus.CancellationPending },
-          { payments: { some: { status: PaymentStatus.RefundPending } } },
+          {
+            payments: {
+              some: {
+                status: {
+                  in: [
+                    PaymentStatus.RefundPending,
+                    PaymentStatus.RefundFailed,
+                  ],
+                },
+              },
+            },
+          },
         ],
       },
     });
@@ -78,6 +89,33 @@ export class UsersService {
       if (claimed.count !== 1) {
         throw new HttpException(
           "This account deletion request is no longer pending.",
+          HttpStatus.CONFLICT,
+        );
+      }
+
+      const unresolvedFinancialWorkflow = await transaction.appointment.count({
+        where: {
+          userId: storedRequest.user.id,
+          OR: [
+            { status: AppointmentStatus.CancellationPending },
+            {
+              payments: {
+                some: {
+                  status: {
+                    in: [
+                      PaymentStatus.RefundPending,
+                      PaymentStatus.RefundFailed,
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      });
+      if (unresolvedFinancialWorkflow > 0) {
+        throw new HttpException(
+          "This account cannot be deleted while a cancellation or refund is unresolved.",
           HttpStatus.CONFLICT,
         );
       }
@@ -245,6 +283,14 @@ export class UsersService {
     currentUser: AuthUser,
     body: DeleteAccountInput,
   ) {
+    const administratorEmail = env.BOOKING_EMAIL_TO.trim();
+    if (!administratorEmail) {
+      throw new HttpException(
+        "Account deletion approval is unavailable because the administrator email is not configured.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: currentUser.id },
       select: {
@@ -292,7 +338,7 @@ export class UsersService {
       requestId: deletionRequest.id,
       confirmationUrl: `${frontendUrl}/?deleteAccountToken=${rawToken}`,
       cancellationUrl: `${frontendUrl}/?cancelDeleteAccountToken=${rawToken}`,
-      adminRecipient: env.BOOKING_EMAIL_TO.trim() || undefined,
+      adminRecipient: administratorEmail,
     });
 
     return {

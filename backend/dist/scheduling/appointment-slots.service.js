@@ -15,6 +15,7 @@ const ACTIVE_APPOINTMENT_STATUSES = [
     AppointmentStatus.Pending,
     AppointmentStatus.Confirmed,
     AppointmentStatus.Rescheduled,
+    AppointmentStatus.CancellationPending,
 ];
 const BUSINESS_HOURS = Array.from({ length: 9 }, (_, index) => 9 + index);
 const businessDateTimeFormatter = new Intl.DateTimeFormat("en-US", {

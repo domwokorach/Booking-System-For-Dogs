@@ -79,7 +79,9 @@ POST /api/users/me/delete-request
 
 Appointment deletion requests generate a random approval token and email the
 administrator a frontend review link. PostgreSQL stores only the token hash;
-approval is single-use and expires after 30 minutes.
+approval is single-use and expires after 30 minutes. An appointment with a
+pending, paid, or refund-related payment cannot be hard-deleted because its
+financial record must be retained; use the cancellation/refund workflow.
 
 `GET /api/reviews` is public. `POST /api/reviews` requires a valid customer
 access token and accepts one review per owned appointment after its scheduled
@@ -113,13 +115,27 @@ cp backend/.env.example backend/.env
 Use a long, private JWT secret in `backend/.env`. For a backend running on the
 host, keep PostgreSQL at `localhost`:
 
+Generate separate random access and refresh secrets (these are strings, not
+numbers):
+
+```bash
+openssl rand -base64 48
+openssl rand -base64 48
+```
+
+Copy the first output to `JWT_ACCESS_SECRET` and the second output to
+`JWT_REFRESH_SECRET`. Never commit either value.
+
 ```env
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/dog_booking?schema=public"
 PORT=3000
 CLIENT_ORIGIN="http://localhost:5173"
 FRONTEND_URL="http://localhost:5173"
 BUSINESS_TIME_ZONE="Europe/London"
-JWT_SECRET="replace-with-at-least-32-random-characters"
+JWT_ACCESS_SECRET="paste-the-first-generated-value-here"
+JWT_REFRESH_SECRET="paste-the-second-generated-value-here"
+JWT_ACCESS_EXPIRES_IN="15m"
+JWT_REFRESH_EXPIRES_IN="7d"
 ```
 
 Start PostgreSQL, apply development migrations, and start NestJS:
@@ -167,6 +183,10 @@ successful payments to `/payment-success`, so Stripe.js and the publishable key
 are not required for the payment flow. The
 publishable key is configured for future client-side Stripe.js features only;
 the secret key must remain in `backend/.env`.
+
+In Stripe test mode, use test card data only. A basic successful Checkout test
+uses card number `4242 4242 4242 4242`, any future expiry date, any three-digit
+CVC, and any valid postcode. Never enter a real card while using test keys.
 
 ### Stripe receipts and paid invoices
 

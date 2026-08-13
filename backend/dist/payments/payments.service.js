@@ -8,14 +8,15 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 import { BadGatewayException, BadRequestException, ConflictException, Injectable, NotFoundException, ServiceUnavailableException, } from "@nestjs/common";
-import { AppointmentStatus, PaymentStatus } from "@prisma/client";
-import { randomBytes } from "node:crypto";
+import { AppointmentCancellationRequestStatus, AppointmentStatus, PaymentStatus, } from "@prisma/client";
+import { createHash, randomBytes } from "node:crypto";
 import Stripe from "stripe";
 import { env } from "../config/env.js";
 import { EmailService } from "../notifications/email.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { RealtimeGateway } from "../realtime/realtime.gateway.js";
 const CHECKOUT_EXPIRY_SECONDS = 30 * 60;
+const APPROVAL_PROCESSING_TIMEOUT_MS = 5 * 60 * 1000;
 let PaymentsService = class PaymentsService {
     prisma;
     email;
@@ -78,10 +79,12 @@ let PaymentsService = class PaymentsService {
             };
             const session = await stripe.checkout.sessions.create({
                 mode: "payment",
-                integration_identifier: `pawside_checkout_${randomLetterSuffix()}`,
                 client_reference_id: input.appointmentId,
                 customer_email: input.customerEmail,
-                invoice_creation: { enabled: true },
+                invoice_creation: {
+                    enabled: true,
+                    invoice_data: { metadata },
+                },
                 billing_address_collection: "required",
                 line_items: [
                     {
@@ -102,7 +105,7 @@ let PaymentsService = class PaymentsService {
                 cancel_url: `${frontendUrl}/payment-cancelled?appointmentId=${encodeURIComponent(input.appointmentId)}`,
                 expires_at: expiresAt,
                 submit_type: "book",
-            });
+            }, { idempotencyKey: `pawside-checkout-${payment.id}` });
             if (!session.url) {
                 throw new Error("Stripe did not return a Checkout URL.");
             }
@@ -192,7 +195,7 @@ let PaymentsService = class PaymentsService {
         const payment = await this.findOwnedPayment(user.id, sessionId);
         return {
             paymentStatus: payment.status.toUpperCase(),
-            appointmentStatus: payment.appointment.status.toUpperCase(),
+            appointmentStatus: appointmentStatusResponse(payment.appointment.status),
             appointmentId: payment.appointmentId,
             amountPence: payment.amountPence,
             currency: payment.currency,
@@ -226,11 +229,230 @@ let PaymentsService = class PaymentsService {
         await this.cancelPendingAppointment(payment.id, appointmentId, payment.userId, PaymentStatus.Expired);
         return { success: true, message: "Payment and pending appointment cancelled." };
     }
-    async cancelAndRefund(user, appointmentId) {
+    async requestCancellation(user, appointmentId) {
+        const administratorEmail = env.BOOKING_EMAIL_TO.trim();
+        if (!administratorEmail) {
+            throw new ServiceUnavailableException("Cancellation approval is unavailable because the administrator email is not configured.");
+        }
+        const appointment = await this.prisma.appointment.findFirst({
+            where: { id: appointmentId, userId: user.id },
+            include: {
+                user: true,
+                serviceRef: true,
+                cancellationRequest: true,
+                payments: { orderBy: { createdAt: "desc" }, take: 1 },
+            },
+        });
+        if (!appointment) {
+            throw new NotFoundException("Appointment not found.");
+        }
+        const payment = appointment.payments[0];
+        if (appointment.status === AppointmentStatus.Cancelled) {
+            return payment
+                ? this.refundResponse(payment, "This booking is already cancelled.")
+                : {
+                    success: true,
+                    appointmentId,
+                    bookingId: appointmentId,
+                    status: AppointmentStatus.Cancelled,
+                    message: "This booking is already cancelled.",
+                };
+        }
+        if (appointment.cancellationRequest?.status ===
+            AppointmentCancellationRequestStatus.PROCESSING &&
+            appointment.cancellationRequest.updatedAt.getTime() >
+                Date.now() - APPROVAL_PROCESSING_TIMEOUT_MS) {
+            throw new ConflictException("This cancellation request is currently being approved.");
+        }
+        const rawToken = randomBytes(32).toString("hex");
+        const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+        const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+        const requestedAt = new Date();
+        const updated = await this.prisma.$transaction(async (transaction) => {
+            const changed = await transaction.appointment.updateMany({
+                where: {
+                    id: appointmentId,
+                    userId: user.id,
+                    status: { not: AppointmentStatus.Cancelled },
+                },
+                data: {
+                    status: AppointmentStatus.CancellationPending,
+                    cancellationRequestedAt: requestedAt,
+                },
+            });
+            if (changed.count !== 1) {
+                throw new ConflictException("The booking state changed. Please retry.");
+            }
+            await transaction.appointmentCancellationRequest.upsert({
+                where: { appointmentId },
+                update: {
+                    tokenHash,
+                    status: AppointmentCancellationRequestStatus.PENDING,
+                    expiresAt,
+                    approvedAt: null,
+                    createdAt: requestedAt,
+                },
+                create: { appointmentId, tokenHash, expiresAt },
+            });
+            return transaction.appointment.findUniqueOrThrow({
+                where: { id: appointmentId },
+                include: { user: true, serviceRef: true },
+            });
+        });
+        const approvalUrl = `${env.FRONTEND_URL.replace(/\/$/, "")}/?cancelAppointmentToken=${rawToken}`;
+        const refundable = payment?.status === PaymentStatus.Paid ? payment : null;
+        const delivery = await this.email.sendCancellationApprovalRequest({
+            to: updated.user.email,
+            firstName: updated.user.firstName,
+            bookingId: updated.id,
+            service: updated.serviceRef?.name ?? updated.service,
+            appointmentDateTime: updated.dateTime,
+            status: AppointmentStatus.CancellationPending,
+            amountPence: refundable?.amountPence,
+            currency: refundable?.currency,
+            approvalUrl,
+            expiresAt,
+            adminRecipient: administratorEmail,
+        });
+        this.realtime.emitToUser(user.id, "appointments:updated", {
+            appointmentId,
+            dateTime: updated.dateTime,
+            status: AppointmentStatus.CancellationPending,
+        });
+        return {
+            success: true,
+            appointmentId,
+            bookingId: appointmentId,
+            status: AppointmentStatus.CancellationPending,
+            cancellationStatus: "PENDING",
+            cancellationRequestedAt: requestedAt,
+            expiresAt,
+            emailDelivered: delivery.customerDelivered && delivery.administratorDelivered,
+            message: delivery.administratorDelivered
+                ? "Cancellation is pending approval. After approval, any eligible refund will be submitted through Stripe and typically appears within 5–10 business days, depending on the bank."
+                : "Cancellation is pending, but the administrator email could not be delivered. Resend the cancellation request or contact support.",
+        };
+    }
+    async approveCancellation(token) {
+        const tokenHash = createHash("sha256").update(token).digest("hex");
+        const staleProcessingBefore = new Date(Date.now() - APPROVAL_PROCESSING_TIMEOUT_MS);
+        const request = await this.prisma.appointmentCancellationRequest.findUnique({
+            where: { tokenHash },
+            include: {
+                appointment: {
+                    include: {
+                        user: true,
+                        serviceRef: true,
+                        payments: { orderBy: { createdAt: "desc" }, take: 1 },
+                    },
+                },
+            },
+        });
+        if (!request ||
+            (request.status !== AppointmentCancellationRequestStatus.PENDING &&
+                !(request.status === AppointmentCancellationRequestStatus.PROCESSING &&
+                    request.updatedAt <= staleProcessingBefore)) ||
+            request.expiresAt <= new Date() ||
+            request.appointment.status !== AppointmentStatus.CancellationPending) {
+            throw new BadRequestException("This cancellation approval link is invalid, expired, or already used.");
+        }
+        const claimed = await this.prisma.appointmentCancellationRequest.updateMany({
+            where: {
+                id: request.id,
+                tokenHash,
+                OR: [
+                    { status: AppointmentCancellationRequestStatus.PENDING },
+                    {
+                        status: AppointmentCancellationRequestStatus.PROCESSING,
+                        updatedAt: { lte: staleProcessingBefore },
+                    },
+                ],
+                expiresAt: { gt: new Date() },
+            },
+            data: { status: AppointmentCancellationRequestStatus.PROCESSING },
+        });
+        if (claimed.count !== 1) {
+            throw new ConflictException("This cancellation request is already being processed.");
+        }
+        try {
+            const refund = await this.processApprovedRefund(request.appointmentId, request.id);
+            if (refund) {
+                return refund;
+            }
+            const pendingPayment = request.appointment.payments[0];
+            if (pendingPayment?.status === PaymentStatus.Pending &&
+                pendingPayment.stripeCheckoutSessionId) {
+                const stripe = this.requireStripe();
+                const session = await stripe.checkout.sessions.retrieve(pendingPayment.stripeCheckoutSessionId);
+                if (session.payment_status !== "unpaid") {
+                    throw new ConflictException("Stripe is still processing this payment. Retry approval after the payment webhook is received.");
+                }
+                if (session.status === "open") {
+                    await stripe.checkout.sessions.expire(pendingPayment.stripeCheckoutSessionId);
+                }
+            }
+            const now = new Date();
+            await this.prisma.$transaction(async (transaction) => {
+                if (pendingPayment?.status === PaymentStatus.Pending) {
+                    await transaction.payment.updateMany({
+                        where: { id: pendingPayment.id, status: PaymentStatus.Pending },
+                        data: { status: PaymentStatus.Expired, failedAt: now },
+                    });
+                }
+                const cancelled = await transaction.appointment.updateMany({
+                    where: {
+                        id: request.appointmentId,
+                        status: AppointmentStatus.CancellationPending,
+                    },
+                    data: { status: AppointmentStatus.Cancelled, cancelledAt: now },
+                });
+                if (cancelled.count !== 1) {
+                    throw new ConflictException("The booking state changed before approval completed.");
+                }
+                await transaction.appointmentCancellationRequest.update({
+                    where: { id: request.id },
+                    data: {
+                        status: AppointmentCancellationRequestStatus.APPROVED,
+                        approvedAt: now,
+                    },
+                });
+            });
+            this.realtime.emitToUser(request.appointment.userId, "appointments:cancelled", {
+                appointmentId: request.appointmentId,
+                dateTime: request.appointment.dateTime,
+                status: AppointmentStatus.Cancelled,
+            });
+            await this.email.sendBookingCancellation({
+                to: request.appointment.user.email,
+                firstName: request.appointment.user.firstName,
+                bookingId: request.appointmentId,
+                service: request.appointment.serviceRef?.name ?? request.appointment.service,
+                appointmentDateTime: request.appointment.dateTime,
+                status: AppointmentStatus.Cancelled,
+            });
+            return {
+                success: true,
+                appointmentId: request.appointmentId,
+                bookingId: request.appointmentId,
+                status: AppointmentStatus.Cancelled,
+                message: "Cancellation approved. No captured payment required a refund.",
+            };
+        }
+        catch (error) {
+            await this.prisma.appointmentCancellationRequest.updateMany({
+                where: {
+                    id: request.id,
+                    status: AppointmentCancellationRequestStatus.PROCESSING,
+                },
+                data: { status: AppointmentCancellationRequestStatus.PENDING },
+            });
+            throw error;
+        }
+    }
+    async processApprovedRefund(appointmentId, cancellationRequestId) {
         const payment = await this.prisma.payment.findFirst({
             where: {
                 appointmentId,
-                userId: user.id,
                 status: {
                     in: [
                         PaymentStatus.Paid,
@@ -249,12 +471,15 @@ let PaymentsService = class PaymentsService {
             return null;
         }
         if (payment.status === PaymentStatus.RefundPending) {
+            await this.finalizeApprovedCancellationRequest(cancellationRequestId, appointmentId);
             return this.refundResponse(payment, "Your booking is cancelled and the refund is still processing.");
         }
         if (payment.status === PaymentStatus.Refunded) {
+            await this.finalizeApprovedCancellationRequest(cancellationRequestId, appointmentId);
             return this.refundResponse(payment, "Your booking is cancelled and the refund has been completed.");
         }
         if (payment.status === PaymentStatus.RefundFailed) {
+            await this.finalizeApprovedCancellationRequest(cancellationRequestId, appointmentId);
             return this.refundResponse(payment, "Your booking is cancelled, but Stripe could not complete the refund. Please contact us.");
         }
         if (!payment.stripePaymentIntentId) {
@@ -270,7 +495,7 @@ let PaymentsService = class PaymentsService {
                     appointmentId,
                     bookingId: appointmentId,
                     paymentId: payment.id,
-                    userId: user.id,
+                    userId: payment.userId,
                 },
             }, { idempotencyKey: `pawside-refund-${payment.id}` });
         }
@@ -292,18 +517,34 @@ let PaymentsService = class PaymentsService {
             const cancelled = await transaction.appointment.updateMany({
                 where: {
                     id: appointmentId,
-                    userId: user.id,
-                    status: { not: AppointmentStatus.Cancelled },
+                    userId: payment.userId,
+                    status: AppointmentStatus.CancellationPending,
                 },
                 data: {
                     status: AppointmentStatus.Cancelled,
                     cancelledAt: now,
                 },
             });
+            if (cancelled.count !== 1) {
+                const currentAppointment = await transaction.appointment.findUnique({
+                    where: { id: appointmentId },
+                    select: { status: true },
+                });
+                if (currentAppointment?.status !== AppointmentStatus.Cancelled) {
+                    throw new ConflictException("The booking state changed before approval completed.");
+                }
+            }
             const currentPayment = await transaction.payment.findUniqueOrThrow({
                 where: { id: payment.id },
                 include: {
                     appointment: { include: { user: true, serviceRef: true } },
+                },
+            });
+            await transaction.appointmentCancellationRequest.update({
+                where: { id: cancellationRequestId },
+                data: {
+                    status: AppointmentCancellationRequestStatus.APPROVED,
+                    approvedAt: now,
                 },
             });
             return {
@@ -313,7 +554,7 @@ let PaymentsService = class PaymentsService {
             };
         });
         if (result.appointmentCancelled) {
-            this.realtime.emitToUser(user.id, "appointments:cancelled", {
+            this.realtime.emitToUser(payment.userId, "appointments:cancelled", {
                 appointmentId,
                 dateTime: result.payment.appointment.dateTime,
                 status: AppointmentStatus.Cancelled,
@@ -334,7 +575,26 @@ let PaymentsService = class PaymentsService {
                 refundId: refund.id,
             });
         }
-        return this.refundResponse(result.payment, "Your booking has been cancelled and your refund has been requested.");
+        return this.refundResponse(result.payment, "Cancellation approved. Your refund was submitted through Stripe and typically appears within 5–10 business days, depending on the bank.");
+    }
+    async finalizeApprovedCancellationRequest(cancellationRequestId, appointmentId) {
+        const now = new Date();
+        await this.prisma.$transaction([
+            this.prisma.appointment.updateMany({
+                where: {
+                    id: appointmentId,
+                    status: AppointmentStatus.CancellationPending,
+                },
+                data: { status: AppointmentStatus.Cancelled, cancelledAt: now },
+            }),
+            this.prisma.appointmentCancellationRequest.update({
+                where: { id: cancellationRequestId },
+                data: {
+                    status: AppointmentCancellationRequestStatus.APPROVED,
+                    approvedAt: now,
+                },
+            }),
+        ]);
     }
     async fulfillPaidSession(session) {
         const payment = await this.findPaymentForSession(session);
@@ -468,11 +728,17 @@ let PaymentsService = class PaymentsService {
     }
     async updateRefundStatus(refund) {
         const paymentId = refund.metadata?.paymentId;
+        const paymentIntentId = typeof refund.payment_intent === "string"
+            ? refund.payment_intent
+            : refund.payment_intent?.id;
         const payment = await this.prisma.payment.findFirst({
             where: {
                 OR: [
                     { stripeRefundId: refund.id },
                     ...(paymentId ? [{ id: paymentId }] : []),
+                    ...(paymentIntentId
+                        ? [{ stripePaymentIntentId: paymentIntentId }]
+                        : []),
                 ],
             },
             include: {
@@ -480,11 +746,15 @@ let PaymentsService = class PaymentsService {
             },
         });
         if (!payment) {
-            throw new BadRequestException("Stripe refund payment record not found.");
+            // This endpoint can receive account-level refund events that do not
+            // belong to Pawside. Acknowledge them so Stripe does not retry forever.
+            return;
         }
         if (refund.amount !== payment.amountPence ||
             refund.currency.toLowerCase() !== payment.currency.toLowerCase()) {
-            throw new BadRequestException("Stripe refund amount does not match.");
+            // Pawside currently supports full refunds only. Acknowledge partial or
+            // foreign-currency refunds without corrupting the full-refund state.
+            return;
         }
         const nextStatus = refund.status === "succeeded"
             ? PaymentStatus.Refunded
@@ -492,32 +762,68 @@ let PaymentsService = class PaymentsService {
                 ? PaymentStatus.RefundFailed
                 : PaymentStatus.RefundPending;
         const now = new Date();
-        const changed = await this.prisma.payment.updateMany({
-            where: {
-                id: payment.id,
-                status: nextStatus === PaymentStatus.Refunded
-                    ? { not: PaymentStatus.Refunded }
-                    : nextStatus === PaymentStatus.RefundFailed
-                        ? { notIn: [PaymentStatus.Refunded, PaymentStatus.RefundFailed] }
-                        : PaymentStatus.Paid,
-            },
-            data: {
-                status: nextStatus,
-                stripeRefundId: refund.id,
-                refundRequestedAt: payment.refundRequestedAt ?? now,
-                refundedAt: nextStatus === PaymentStatus.Refunded ? now : null,
-                refundFailedAt: nextStatus === PaymentStatus.RefundFailed ? now : null,
-                refundFailureReason: nextStatus === PaymentStatus.RefundFailed
-                    ? refund.failure_reason ?? "unknown"
-                    : null,
-            },
+        const shouldCancelAppointment = nextStatus !== PaymentStatus.RefundFailed;
+        const changed = await this.prisma.$transaction(async (transaction) => {
+            const updatedPayment = await transaction.payment.updateMany({
+                where: {
+                    id: payment.id,
+                    status: nextStatus === PaymentStatus.Refunded
+                        ? { not: PaymentStatus.Refunded }
+                        : nextStatus === PaymentStatus.RefundFailed
+                            ? { notIn: [PaymentStatus.Refunded, PaymentStatus.RefundFailed] }
+                            : PaymentStatus.Paid,
+                },
+                data: {
+                    status: nextStatus,
+                    stripeRefundId: refund.id,
+                    refundRequestedAt: payment.refundRequestedAt ?? now,
+                    refundedAt: nextStatus === PaymentStatus.Refunded ? now : null,
+                    refundFailedAt: nextStatus === PaymentStatus.RefundFailed ? now : null,
+                    refundFailureReason: nextStatus === PaymentStatus.RefundFailed
+                        ? refund.failure_reason ?? "unknown"
+                        : null,
+                },
+            });
+            if (updatedPayment.count !== 1) {
+                return false;
+            }
+            if (shouldCancelAppointment) {
+                // A full refund created manually in Stripe is an explicit administrator
+                // action, so keep Pawside's booking state aligned with Stripe.
+                await transaction.appointment.updateMany({
+                    where: {
+                        id: payment.appointmentId,
+                        status: { not: AppointmentStatus.Cancelled },
+                    },
+                    data: { status: AppointmentStatus.Cancelled, cancelledAt: now },
+                });
+                await transaction.appointmentCancellationRequest.updateMany({
+                    where: {
+                        appointmentId: payment.appointmentId,
+                        status: {
+                            in: [
+                                AppointmentCancellationRequestStatus.PENDING,
+                                AppointmentCancellationRequestStatus.PROCESSING,
+                            ],
+                        },
+                    },
+                    data: {
+                        status: AppointmentCancellationRequestStatus.APPROVED,
+                        approvedAt: now,
+                    },
+                });
+            }
+            return true;
         });
-        if (changed.count !== 1) {
+        if (!changed) {
             return;
         }
+        const appointmentStatus = shouldCancelAppointment
+            ? AppointmentStatus.Cancelled
+            : payment.appointment.status;
         this.realtime.emitToUser(payment.userId, "appointments:updated", {
             appointmentId: payment.appointmentId,
-            status: AppointmentStatus.Cancelled,
+            status: appointmentStatus,
             paymentStatus: paymentStatusResponse(nextStatus),
         });
         const emailData = {
@@ -526,7 +832,7 @@ let PaymentsService = class PaymentsService {
             bookingId: payment.appointmentId,
             service: payment.appointment.serviceRef?.name ?? payment.appointment.service,
             appointmentDateTime: payment.appointment.dateTime,
-            status: AppointmentStatus.Cancelled,
+            status: appointmentStatus,
             amountPence: payment.amountPence,
             currency: payment.currency,
             paymentStatus: paymentStatusResponse(nextStatus),
@@ -568,6 +874,7 @@ let PaymentsService = class PaymentsService {
         return {
             success: true,
             appointmentId: payment.appointmentId,
+            bookingId: payment.appointmentId,
             status: AppointmentStatus.Cancelled,
             paymentStatus: paymentStatusResponse(payment.status),
             refundStatus: paymentStatusResponse(payment.status),
@@ -591,9 +898,9 @@ PaymentsService = __decorate([
         RealtimeGateway])
 ], PaymentsService);
 export { PaymentsService };
-function randomLetterSuffix() {
-    return Array.from(randomBytes(8), (byte) => String.fromCharCode(97 + (byte % 26))).join("");
-}
 function paymentStatusResponse(status) {
+    return status.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
+}
+function appointmentStatusResponse(status) {
     return status.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
 }

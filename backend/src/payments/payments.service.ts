@@ -32,6 +32,7 @@ type CheckoutInput = {
 };
 
 const CHECKOUT_EXPIRY_SECONDS = 30 * 60;
+const APPROVAL_PROCESSING_TIMEOUT_MS = 5 * 60 * 1000;
 
 @Injectable()
 export class PaymentsService {
@@ -102,36 +103,38 @@ export class PaymentsService {
         paymentId: payment.id,
         userId: input.userId,
       };
-      const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        integration_identifier: `pawside_checkout_${randomLetterSuffix()}`,
-        client_reference_id: input.appointmentId,
-        customer_email: input.customerEmail,
-        invoice_creation: {
-          enabled: true,
-          invoice_data: { metadata },
-        },
-        billing_address_collection: "required",
-        line_items: [
-          {
-            quantity: 1,
-            price_data: {
-              currency: env.STRIPE_CURRENCY.toLowerCase(),
-              unit_amount: input.amountPence,
-              product_data: {
-                name: `${input.serviceName} appointment`,
-                description: `Appointment for ${input.customerName}`,
+      const session = await stripe.checkout.sessions.create(
+        {
+          mode: "payment",
+          client_reference_id: input.appointmentId,
+          customer_email: input.customerEmail,
+          invoice_creation: {
+            enabled: true,
+            invoice_data: { metadata },
+          },
+          billing_address_collection: "required",
+          line_items: [
+            {
+              quantity: 1,
+              price_data: {
+                currency: env.STRIPE_CURRENCY.toLowerCase(),
+                unit_amount: input.amountPence,
+                product_data: {
+                  name: `${input.serviceName} appointment`,
+                  description: `Appointment for ${input.customerName}`,
+                },
               },
             },
-          },
-        ],
-        metadata,
-        payment_intent_data: { metadata },
-        success_url: `${frontendUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${frontendUrl}/payment-cancelled?appointmentId=${encodeURIComponent(input.appointmentId)}`,
-        expires_at: expiresAt,
-        submit_type: "book",
-      });
+          ],
+          metadata,
+          payment_intent_data: { metadata },
+          success_url: `${frontendUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${frontendUrl}/payment-cancelled?appointmentId=${encodeURIComponent(input.appointmentId)}`,
+          expires_at: expiresAt,
+          submit_type: "book",
+        },
+        { idempotencyKey: `pawside-checkout-${payment.id}` },
+      );
 
       if (!session.url) {
         throw new Error("Stripe did not return a Checkout URL.");
@@ -290,6 +293,13 @@ export class PaymentsService {
   }
 
   async requestCancellation(user: AuthUser, appointmentId: string) {
+    const administratorEmail = env.BOOKING_EMAIL_TO.trim();
+    if (!administratorEmail) {
+      throw new ServiceUnavailableException(
+        "Cancellation approval is unavailable because the administrator email is not configured.",
+      );
+    }
+
     const appointment = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, userId: user.id },
       include: {
@@ -316,7 +326,9 @@ export class PaymentsService {
     }
     if (
       appointment.cancellationRequest?.status ===
-      AppointmentCancellationRequestStatus.PROCESSING
+        AppointmentCancellationRequestStatus.PROCESSING &&
+      appointment.cancellationRequest.updatedAt.getTime() >
+        Date.now() - APPROVAL_PROCESSING_TIMEOUT_MS
     ) {
       throw new ConflictException(
         "This cancellation request is currently being approved.",
@@ -375,6 +387,7 @@ export class PaymentsService {
       currency: refundable?.currency,
       approvalUrl,
       expiresAt,
+      adminRecipient: administratorEmail,
     });
 
     this.realtime.emitToUser(user.id, "appointments:updated", {
@@ -393,13 +406,17 @@ export class PaymentsService {
       expiresAt,
       emailDelivered:
         delivery.customerDelivered && delivery.administratorDelivered,
-      message:
-        "Cancellation is pending approval. After approval, any eligible refund will be submitted through Stripe and typically appears within 5–10 business days, depending on the bank.",
+      message: delivery.administratorDelivered
+        ? "Cancellation is pending approval. After approval, any eligible refund will be submitted through Stripe and typically appears within 5–10 business days, depending on the bank."
+        : "Cancellation is pending, but the administrator email could not be delivered. Resend the cancellation request or contact support.",
     };
   }
 
   async approveCancellation(token: string) {
     const tokenHash = createHash("sha256").update(token).digest("hex");
+    const staleProcessingBefore = new Date(
+      Date.now() - APPROVAL_PROCESSING_TIMEOUT_MS,
+    );
     const request = await this.prisma.appointmentCancellationRequest.findUnique({
       where: { tokenHash },
       include: {
@@ -414,7 +431,11 @@ export class PaymentsService {
     });
     if (
       !request ||
-      request.status !== AppointmentCancellationRequestStatus.PENDING ||
+      (request.status !== AppointmentCancellationRequestStatus.PENDING &&
+        !(
+          request.status === AppointmentCancellationRequestStatus.PROCESSING &&
+          request.updatedAt <= staleProcessingBefore
+        )) ||
       request.expiresAt <= new Date() ||
       request.appointment.status !== AppointmentStatus.CancellationPending
     ) {
@@ -427,7 +448,13 @@ export class PaymentsService {
       where: {
         id: request.id,
         tokenHash,
-        status: AppointmentCancellationRequestStatus.PENDING,
+        OR: [
+          { status: AppointmentCancellationRequestStatus.PENDING },
+          {
+            status: AppointmentCancellationRequestStatus.PROCESSING,
+            updatedAt: { lte: staleProcessingBefore },
+          },
+        ],
         expiresAt: { gt: new Date() },
       },
       data: { status: AppointmentCancellationRequestStatus.PROCESSING },
@@ -637,9 +664,15 @@ export class PaymentsService {
         },
       });
       if (cancelled.count !== 1) {
-        throw new ConflictException(
-          "The booking state changed before approval completed.",
-        );
+        const currentAppointment = await transaction.appointment.findUnique({
+          where: { id: appointmentId },
+          select: { status: true },
+        });
+        if (currentAppointment?.status !== AppointmentStatus.Cancelled) {
+          throw new ConflictException(
+            "The booking state changed before approval completed.",
+          );
+        }
       }
       const currentPayment = await transaction.payment.findUniqueOrThrow({
         where: { id: payment.id },
@@ -873,11 +906,18 @@ export class PaymentsService {
 
   private async updateRefundStatus(refund: Stripe.Refund) {
     const paymentId = refund.metadata?.paymentId;
+    const paymentIntentId =
+      typeof refund.payment_intent === "string"
+        ? refund.payment_intent
+        : refund.payment_intent?.id;
     const payment = await this.prisma.payment.findFirst({
       where: {
         OR: [
           { stripeRefundId: refund.id },
           ...(paymentId ? [{ id: paymentId }] : []),
+          ...(paymentIntentId
+            ? [{ stripePaymentIntentId: paymentIntentId }]
+            : []),
         ],
       },
       include: {
@@ -885,13 +925,17 @@ export class PaymentsService {
       },
     });
     if (!payment) {
-      throw new BadRequestException("Stripe refund payment record not found.");
+      // This endpoint can receive account-level refund events that do not
+      // belong to Pawside. Acknowledge them so Stripe does not retry forever.
+      return;
     }
     if (
       refund.amount !== payment.amountPence ||
       refund.currency.toLowerCase() !== payment.currency.toLowerCase()
     ) {
-      throw new BadRequestException("Stripe refund amount does not match.");
+      // Pawside currently supports full refunds only. Acknowledge partial or
+      // foreign-currency refunds without corrupting the full-refund state.
+      return;
     }
 
     const nextStatus =
@@ -901,35 +945,73 @@ export class PaymentsService {
           ? PaymentStatus.RefundFailed
           : PaymentStatus.RefundPending;
     const now = new Date();
-    const changed = await this.prisma.payment.updateMany({
-      where: {
-        id: payment.id,
-        status:
-          nextStatus === PaymentStatus.Refunded
-            ? { not: PaymentStatus.Refunded }
-            : nextStatus === PaymentStatus.RefundFailed
-              ? { notIn: [PaymentStatus.Refunded, PaymentStatus.RefundFailed] }
-              : PaymentStatus.Paid,
-      },
-      data: {
-        status: nextStatus,
-        stripeRefundId: refund.id,
-        refundRequestedAt: payment.refundRequestedAt ?? now,
-        refundedAt: nextStatus === PaymentStatus.Refunded ? now : null,
-        refundFailedAt: nextStatus === PaymentStatus.RefundFailed ? now : null,
-        refundFailureReason:
-          nextStatus === PaymentStatus.RefundFailed
-            ? refund.failure_reason ?? "unknown"
-            : null,
-      },
+    const shouldCancelAppointment =
+      nextStatus !== PaymentStatus.RefundFailed;
+    const changed = await this.prisma.$transaction(async (transaction) => {
+      const updatedPayment = await transaction.payment.updateMany({
+        where: {
+          id: payment.id,
+          status:
+            nextStatus === PaymentStatus.Refunded
+              ? { not: PaymentStatus.Refunded }
+              : nextStatus === PaymentStatus.RefundFailed
+                ? { notIn: [PaymentStatus.Refunded, PaymentStatus.RefundFailed] }
+                : PaymentStatus.Paid,
+        },
+        data: {
+          status: nextStatus,
+          stripeRefundId: refund.id,
+          refundRequestedAt: payment.refundRequestedAt ?? now,
+          refundedAt: nextStatus === PaymentStatus.Refunded ? now : null,
+          refundFailedAt: nextStatus === PaymentStatus.RefundFailed ? now : null,
+          refundFailureReason:
+            nextStatus === PaymentStatus.RefundFailed
+              ? refund.failure_reason ?? "unknown"
+              : null,
+        },
+      });
+      if (updatedPayment.count !== 1) {
+        return false;
+      }
+
+      if (shouldCancelAppointment) {
+        // A full refund created manually in Stripe is an explicit administrator
+        // action, so keep Pawside's booking state aligned with Stripe.
+        await transaction.appointment.updateMany({
+          where: {
+            id: payment.appointmentId,
+            status: { not: AppointmentStatus.Cancelled },
+          },
+          data: { status: AppointmentStatus.Cancelled, cancelledAt: now },
+        });
+        await transaction.appointmentCancellationRequest.updateMany({
+          where: {
+            appointmentId: payment.appointmentId,
+            status: {
+              in: [
+                AppointmentCancellationRequestStatus.PENDING,
+                AppointmentCancellationRequestStatus.PROCESSING,
+              ],
+            },
+          },
+          data: {
+            status: AppointmentCancellationRequestStatus.APPROVED,
+            approvedAt: now,
+          },
+        });
+      }
+      return true;
     });
-    if (changed.count !== 1) {
+    if (!changed) {
       return;
     }
 
+    const appointmentStatus = shouldCancelAppointment
+      ? AppointmentStatus.Cancelled
+      : payment.appointment.status;
     this.realtime.emitToUser(payment.userId, "appointments:updated", {
       appointmentId: payment.appointmentId,
-      status: AppointmentStatus.Cancelled,
+      status: appointmentStatus,
       paymentStatus: paymentStatusResponse(nextStatus),
     });
     const emailData = {
@@ -939,7 +1021,7 @@ export class PaymentsService {
       service:
         payment.appointment.serviceRef?.name ?? payment.appointment.service,
       appointmentDateTime: payment.appointment.dateTime,
-      status: AppointmentStatus.Cancelled,
+      status: appointmentStatus,
       amountPence: payment.amountPence,
       currency: payment.currency,
       paymentStatus: paymentStatusResponse(nextStatus),
@@ -1007,12 +1089,6 @@ export class PaymentsService {
     }
     return this.stripe;
   }
-}
-
-function randomLetterSuffix(): string {
-  return Array.from(randomBytes(8), (byte) =>
-    String.fromCharCode(97 + (byte % 26)),
-  ).join("");
 }
 
 function paymentStatusResponse(status: PaymentStatus): string {

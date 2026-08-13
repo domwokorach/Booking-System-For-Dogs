@@ -5,6 +5,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { AppointmentStatus, PaymentStatus, Prisma } from "@prisma/client";
 
@@ -35,6 +36,14 @@ const safeAppointmentInclude = {
   user: { select: publicUserSelect },
   serviceRef: true,
 } as const;
+
+const RETAINED_PAYMENT_STATUSES = [
+  PaymentStatus.Pending,
+  PaymentStatus.Paid,
+  PaymentStatus.RefundPending,
+  PaymentStatus.Refunded,
+  PaymentStatus.RefundFailed,
+] as const;
 
 @Injectable()
 export class AppointmentsService {
@@ -398,7 +407,22 @@ export class AppointmentsService {
     const tokenHash = this.hashAppointmentDeletionToken(token);
     const request = await this.prisma.appointmentDeletionRequest.findUnique({
       where: { tokenHash },
-      include: { appointment: { include: safeAppointmentInclude } },
+      include: {
+        appointment: {
+          include: {
+            ...safeAppointmentInclude,
+            payments: {
+              where: {
+                status: {
+                  in: [...RETAINED_PAYMENT_STATUSES],
+                },
+              },
+              select: { id: true },
+              take: 1,
+            },
+          },
+        },
+      },
     });
 
     if (!request || request.expiresAt <= new Date()) {
@@ -411,6 +435,11 @@ export class AppointmentsService {
     if (appointment.status === AppointmentStatus.CancellationPending) {
       throw new ConflictException(
         "This appointment cannot be deleted while cancellation approval is pending.",
+      );
+    }
+    if (appointment.payments.length > 0) {
+      throw new ConflictException(
+        "This appointment cannot be deleted because its payment record must be retained. Cancel any paid booking through the refund workflow.",
       );
     }
     await this.prisma.$transaction(async (transaction) => {
@@ -427,10 +456,25 @@ export class AppointmentsService {
         );
       }
 
+      const unresolvedRefund = await transaction.payment.count({
+        where: {
+          appointmentId: request.appointmentId,
+          status: {
+            in: [...RETAINED_PAYMENT_STATUSES],
+          },
+        },
+      });
+      if (unresolvedRefund > 0) {
+        throw new ConflictException(
+          "This appointment cannot be deleted because its payment record must be retained. Cancel any paid booking through the refund workflow.",
+        );
+      }
+
       const deleted = await transaction.appointment.deleteMany({
         where: {
           id: request.appointmentId,
           deleteRequestedAt: { not: null },
+          status: { not: AppointmentStatus.CancellationPending },
         },
       });
       if (deleted.count !== 1) {
@@ -457,10 +501,30 @@ export class AppointmentsService {
   }
 
   async requestDeletion(user: AuthUser, id: string) {
+    const administratorEmail = env.BOOKING_EMAIL_TO.trim();
+    if (!administratorEmail) {
+      throw new ServiceUnavailableException(
+        "Deletion approval is unavailable because the administrator email is not configured.",
+      );
+    }
+
     const existing = await this.findOwned(user.id, id);
     if (existing.status === AppointmentStatus.CancellationPending) {
       throw new ConflictException(
         "This appointment cannot be deleted while cancellation approval is pending.",
+      );
+    }
+    const unresolvedRefund = await this.prisma.payment.count({
+      where: {
+        appointmentId: id,
+        status: {
+          in: [...RETAINED_PAYMENT_STATUSES],
+        },
+      },
+    });
+    if (unresolvedRefund > 0) {
+      throw new ConflictException(
+        "This appointment cannot be deleted because its payment record must be retained. Cancel any paid booking through the refund workflow.",
       );
     }
     const rawToken = randomBytes(32).toString("hex");
@@ -498,6 +562,7 @@ export class AppointmentsService {
       appointmentDateTime: updated.dateTime,
       status: updated.status,
       approvalUrl,
+      adminRecipient: administratorEmail,
     });
     return {
       success: true,

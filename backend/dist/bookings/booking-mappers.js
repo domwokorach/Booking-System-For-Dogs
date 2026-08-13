@@ -14,7 +14,7 @@ export function parseSlotId(slotId) {
     return { serviceId, dateTime };
 }
 export function toApiStatus(status) {
-    return status.toUpperCase();
+    return status.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
 }
 export function formatDate(value) {
     const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {

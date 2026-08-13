@@ -5,8 +5,9 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
-import { AppointmentStatus, Prisma } from "@prisma/client";
+import { AppointmentStatus, PaymentStatus, Prisma } from "@prisma/client";
 
 import type { AuthUser } from "../auth/auth.types.js";
 import { env } from "../config/env.js";
@@ -36,6 +37,14 @@ const bookingUserSelect = {
   address: true,
   mobileNumber: true,
 } as const;
+
+const RETAINED_PAYMENT_STATUSES = [
+  PaymentStatus.Pending,
+  PaymentStatus.Paid,
+  PaymentStatus.RefundPending,
+  PaymentStatus.Refunded,
+  PaymentStatus.RefundFailed,
+] as const;
 
 @Injectable()
 export class BookingsService {
@@ -347,10 +356,30 @@ export class BookingsService {
   }
 
   async requestDeletion(user: AuthUser, id: string) {
+    const administratorEmail = env.BOOKING_EMAIL_TO.trim();
+    if (!administratorEmail) {
+      throw new ServiceUnavailableException(
+        "Deletion approval is unavailable because the administrator email is not configured.",
+      );
+    }
+
     const existing = await this.findOwnedWithUser(user.id, id);
     if (existing.status === AppointmentStatus.CancellationPending) {
       throw new ConflictException(
         "This booking cannot be deleted while cancellation approval is pending.",
+      );
+    }
+    const unresolvedRefund = await this.prisma.payment.count({
+      where: {
+        appointmentId: id,
+        status: {
+          in: [...RETAINED_PAYMENT_STATUSES],
+        },
+      },
+    });
+    if (unresolvedRefund > 0) {
+      throw new ConflictException(
+        "This booking cannot be deleted because its payment record must be retained. Cancel any paid booking through the refund workflow.",
       );
     }
     const rawToken = randomBytes(32).toString("hex");
@@ -388,6 +417,7 @@ export class BookingsService {
       appointmentDateTime: updated.dateTime,
       status: toApiStatus(updated.status),
       approvalUrl,
+      adminRecipient: administratorEmail,
     });
     return {
       success: true,

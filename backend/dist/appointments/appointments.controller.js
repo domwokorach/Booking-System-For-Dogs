@@ -13,7 +13,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards, } from "@nestjs/common";
 import { CurrentUser } from "../auth/current-user.decorator.js";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard.js";
-import { approveAppointmentDeletionSchema, availableAppointmentsQuerySchema, createAppointmentSchema, rescheduleAppointmentSchema, updateAppointmentSchema, } from "./dto/appointments.schemas.js";
+import { approveAppointmentCancellationSchema, approveAppointmentDeletionSchema, availableAppointmentsQuerySchema, createAppointmentSchema, rescheduleAppointmentSchema, updateAppointmentSchema, } from "./dto/appointments.schemas.js";
 import { AppointmentsService } from "./appointments.service.js";
 let AppointmentAvailabilityController = class AppointmentAvailabilityController {
     appointmentsService;
@@ -46,6 +46,10 @@ let AppointmentDeletionController = class AppointmentDeletionController {
         const { token } = approveAppointmentDeletionSchema.parse(body);
         return this.appointmentsService.approveDeletion(token);
     }
+    approveCancellation(body) {
+        const { token } = approveAppointmentCancellationSchema.parse(body);
+        return this.appointmentsService.approveCancellation(token);
+    }
 };
 __decorate([
     Post("delete/confirm"),
@@ -55,6 +59,14 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], AppointmentDeletionController.prototype, "approveDeletion", null);
+__decorate([
+    Post("cancel/confirm"),
+    HttpCode(HttpStatus.OK),
+    __param(0, Body()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], AppointmentDeletionController.prototype, "approveCancellation", null);
 AppointmentDeletionController = __decorate([
     Controller("api/appointments"),
     __metadata("design:paramtypes", [AppointmentsService])

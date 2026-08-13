@@ -8,8 +8,8 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 import { createHash, randomBytes } from "node:crypto";
-import { BadRequestException, ConflictException, Injectable, NotFoundException, } from "@nestjs/common";
-import { AppointmentStatus, Prisma } from "@prisma/client";
+import { BadRequestException, ConflictException, Injectable, NotFoundException, ServiceUnavailableException, } from "@nestjs/common";
+import { AppointmentStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { env } from "../config/env.js";
 import { EmailService } from "../notifications/email.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -29,6 +29,13 @@ const safeAppointmentInclude = {
     user: { select: publicUserSelect },
     serviceRef: true,
 };
+const RETAINED_PAYMENT_STATUSES = [
+    PaymentStatus.Pending,
+    PaymentStatus.Paid,
+    PaymentStatus.RefundPending,
+    PaymentStatus.Refunded,
+    PaymentStatus.RefundFailed,
+];
 let AppointmentsService = class AppointmentsService {
     prisma;
     appointmentSlots;
@@ -91,8 +98,9 @@ let AppointmentsService = class AppointmentsService {
     }
     async availableForReschedule(user, id, date) {
         const existing = await this.findOwned(user.id, id);
-        if (existing.status === AppointmentStatus.Cancelled) {
-            throw new BadRequestException("Cancelled appointments cannot be rescheduled.");
+        if (existing.status === AppointmentStatus.Cancelled ||
+            existing.status === AppointmentStatus.CancellationPending) {
+            throw new BadRequestException("Cancelled appointments and pending cancellation requests cannot be rescheduled.");
         }
         return {
             appointmentId: existing.id,
@@ -157,6 +165,9 @@ let AppointmentsService = class AppointmentsService {
     }
     async update(user, id, body) {
         const existing = await this.findOwned(user.id, id);
+        if (existing.status === AppointmentStatus.CancellationPending) {
+            throw new BadRequestException("Appointments with a pending cancellation request cannot be edited.");
+        }
         const service = body.service
             ? await this.resolveActiveService(body.service)
             : null;
@@ -209,8 +220,9 @@ let AppointmentsService = class AppointmentsService {
     }
     async reschedule(user, id, body) {
         const existing = await this.findOwned(user.id, id);
-        if (existing.status === AppointmentStatus.Cancelled) {
-            throw new BadRequestException("Cancelled appointments cannot be rescheduled.");
+        if (existing.status === AppointmentStatus.Cancelled ||
+            existing.status === AppointmentStatus.CancellationPending) {
+            throw new BadRequestException("Cancelled appointments and pending cancellation requests cannot be rescheduled.");
         }
         let updated;
         try {
@@ -262,8 +274,9 @@ let AppointmentsService = class AppointmentsService {
     }
     async confirm(user, id) {
         const existing = await this.findOwned(user.id, id);
-        if (existing.status === AppointmentStatus.Cancelled) {
-            throw new BadRequestException("Cancelled appointments cannot be confirmed.");
+        if (existing.status === AppointmentStatus.Cancelled ||
+            existing.status === AppointmentStatus.CancellationPending) {
+            throw new BadRequestException("Cancelled appointments and pending cancellation requests cannot be confirmed.");
         }
         if (existing.status === AppointmentStatus.Confirmed) {
             return existing;
@@ -323,58 +336,42 @@ let AppointmentsService = class AppointmentsService {
         };
     }
     async cancel(user, id) {
-        const refund = await this.payments.cancelAndRefund(user, id);
-        if (refund) {
-            return refund;
-        }
-        const existing = await this.findOwned(user.id, id);
-        if (existing.status === AppointmentStatus.Cancelled) {
-            return existing;
-        }
-        const updated = await this.prisma.$transaction(async (transaction) => {
-            const changed = await transaction.appointment.updateMany({
-                where: {
-                    id,
-                    userId: user.id,
-                    status: existing.status,
-                    dateTime: existing.dateTime,
-                    updatedAt: existing.updatedAt,
-                },
-                data: {
-                    status: AppointmentStatus.Cancelled,
-                    cancelledAt: new Date(),
-                },
-            });
-            if (changed.count !== 1) {
-                throw new ConflictException("The appointment state changed. Please retry.");
-            }
-            return this.findOwned(user.id, id, transaction);
-        });
-        this.realtime.emitToUser(user.id, "appointments:cancelled", {
-            appointmentId: updated.id,
-            dateTime: updated.dateTime,
-            status: updated.status,
-        });
-        await this.email.sendBookingCancellation({
-            to: updated.user.email,
-            firstName: updated.user.firstName,
-            bookingId: updated.id,
-            service: updated.serviceRef?.name ?? updated.service,
-            appointmentDateTime: updated.dateTime,
-            status: updated.status,
-        });
-        return updated;
+        return this.payments.requestCancellation(user, id);
+    }
+    async approveCancellation(token) {
+        return this.payments.approveCancellation(token);
     }
     async approveDeletion(token) {
         const tokenHash = this.hashAppointmentDeletionToken(token);
         const request = await this.prisma.appointmentDeletionRequest.findUnique({
             where: { tokenHash },
-            include: { appointment: { include: safeAppointmentInclude } },
+            include: {
+                appointment: {
+                    include: {
+                        ...safeAppointmentInclude,
+                        payments: {
+                            where: {
+                                status: {
+                                    in: [...RETAINED_PAYMENT_STATUSES],
+                                },
+                            },
+                            select: { id: true },
+                            take: 1,
+                        },
+                    },
+                },
+            },
         });
         if (!request || request.expiresAt <= new Date()) {
             throw new BadRequestException("This deletion approval link is invalid, expired, or already used.");
         }
         const appointment = request.appointment;
+        if (appointment.status === AppointmentStatus.CancellationPending) {
+            throw new ConflictException("This appointment cannot be deleted while cancellation approval is pending.");
+        }
+        if (appointment.payments.length > 0) {
+            throw new ConflictException("This appointment cannot be deleted because its payment record must be retained. Cancel any paid booking through the refund workflow.");
+        }
         await this.prisma.$transaction(async (transaction) => {
             const claimed = await transaction.appointmentDeletionRequest.deleteMany({
                 where: {
@@ -386,10 +383,22 @@ let AppointmentsService = class AppointmentsService {
             if (claimed.count !== 1) {
                 throw new BadRequestException("This deletion approval link is invalid, expired, or already used.");
             }
+            const unresolvedRefund = await transaction.payment.count({
+                where: {
+                    appointmentId: request.appointmentId,
+                    status: {
+                        in: [...RETAINED_PAYMENT_STATUSES],
+                    },
+                },
+            });
+            if (unresolvedRefund > 0) {
+                throw new ConflictException("This appointment cannot be deleted because its payment record must be retained. Cancel any paid booking through the refund workflow.");
+            }
             const deleted = await transaction.appointment.deleteMany({
                 where: {
                     id: request.appointmentId,
                     deleteRequestedAt: { not: null },
+                    status: { not: AppointmentStatus.CancellationPending },
                 },
             });
             if (deleted.count !== 1) {
@@ -414,7 +423,25 @@ let AppointmentsService = class AppointmentsService {
         };
     }
     async requestDeletion(user, id) {
-        await this.findOwned(user.id, id);
+        const administratorEmail = env.BOOKING_EMAIL_TO.trim();
+        if (!administratorEmail) {
+            throw new ServiceUnavailableException("Deletion approval is unavailable because the administrator email is not configured.");
+        }
+        const existing = await this.findOwned(user.id, id);
+        if (existing.status === AppointmentStatus.CancellationPending) {
+            throw new ConflictException("This appointment cannot be deleted while cancellation approval is pending.");
+        }
+        const unresolvedRefund = await this.prisma.payment.count({
+            where: {
+                appointmentId: id,
+                status: {
+                    in: [...RETAINED_PAYMENT_STATUSES],
+                },
+            },
+        });
+        if (unresolvedRefund > 0) {
+            throw new ConflictException("This appointment cannot be deleted because its payment record must be retained. Cancel any paid booking through the refund workflow.");
+        }
         const rawToken = randomBytes(32).toString("hex");
         const tokenHash = this.hashAppointmentDeletionToken(rawToken);
         const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
@@ -447,6 +474,7 @@ let AppointmentsService = class AppointmentsService {
             appointmentDateTime: updated.dateTime,
             status: updated.status,
             approvalUrl,
+            adminRecipient: administratorEmail,
         });
         return {
             success: true,

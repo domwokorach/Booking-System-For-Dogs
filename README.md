@@ -402,7 +402,9 @@ POST /api/appointments/delete/confirm
 
 The authenticated request endpoint emails the administrator a single-use
 approval link. Only a SHA-256 token hash is stored in PostgreSQL, and the link
-expires after 30 minutes.
+expires after 30 minutes. Paid and refund-related bookings cannot be
+hard-deleted because their payment records must be retained; cancel them
+through the approval/refund workflow instead.
 
 ### Appointment cancellation approval
 

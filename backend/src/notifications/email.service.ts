@@ -33,7 +33,7 @@ export type AccountDeletionRequestEmailData = {
   requestId: string;
   confirmationUrl: string;
   cancellationUrl: string;
-  adminRecipient?: string;
+  adminRecipient: string;
 };
 
 @Injectable()
@@ -51,7 +51,11 @@ export class EmailService {
   }
 
   sendCancellationApprovalRequest(
-    data: BookingEmailData & { approvalUrl: string; expiresAt: Date },
+    data: BookingEmailData & {
+      approvalUrl: string;
+      expiresAt: Date;
+      adminRecipient: string;
+    },
   ): Promise<{
     customerDelivered: boolean;
     administratorDelivered: boolean;
@@ -72,7 +76,7 @@ export class EmailService {
   }
 
   sendDeletionRequest(
-    data: BookingEmailData & { approvalUrl: string },
+    data: BookingEmailData & { approvalUrl: string; adminRecipient: string },
   ): Promise<boolean> {
     return sendDeletionRequestEmail(data);
   }

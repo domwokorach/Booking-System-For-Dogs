@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 import { createHash, randomBytes } from "node:crypto";
 import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { AppointmentStatus, PaymentStatus, Prisma } from "@prisma/client";
 import argon2 from "argon2";
 import bcrypt from "bcryptjs";
 import { env } from "../config/env.js";
@@ -38,6 +38,29 @@ let UsersService = class UsersService {
         if (storedRequest.status === "CANCELLED") {
             throw new HttpException("This account deletion request has been cancelled.", HttpStatus.CONFLICT);
         }
+        const unresolvedFinancialWorkflow = await this.prisma.appointment.count({
+            where: {
+                userId: storedRequest.user.id,
+                OR: [
+                    { status: AppointmentStatus.CancellationPending },
+                    {
+                        payments: {
+                            some: {
+                                status: {
+                                    in: [
+                                        PaymentStatus.RefundPending,
+                                        PaymentStatus.RefundFailed,
+                                    ],
+                                },
+                            },
+                        },
+                    },
+                ],
+            },
+        });
+        if (unresolvedFinancialWorkflow > 0) {
+            throw new HttpException("This account cannot be deleted while a cancellation or refund is still processing.", HttpStatus.CONFLICT);
+        }
         await this.prisma.$transaction(async (transaction) => {
             const claimed = await transaction.accountDeletionRequest.updateMany({
                 where: {
@@ -50,6 +73,29 @@ let UsersService = class UsersService {
             });
             if (claimed.count !== 1) {
                 throw new HttpException("This account deletion request is no longer pending.", HttpStatus.CONFLICT);
+            }
+            const unresolvedFinancialWorkflow = await transaction.appointment.count({
+                where: {
+                    userId: storedRequest.user.id,
+                    OR: [
+                        { status: AppointmentStatus.CancellationPending },
+                        {
+                            payments: {
+                                some: {
+                                    status: {
+                                        in: [
+                                            PaymentStatus.RefundPending,
+                                            PaymentStatus.RefundFailed,
+                                        ],
+                                    },
+                                },
+                            },
+                        },
+                    ],
+                },
+            });
+            if (unresolvedFinancialWorkflow > 0) {
+                throw new HttpException("This account cannot be deleted while a cancellation or refund is unresolved.", HttpStatus.CONFLICT);
             }
             await transaction.user.delete({
                 where: { id: storedRequest.user.id },
@@ -182,6 +228,10 @@ let UsersService = class UsersService {
         };
     }
     async requestAccountDeletion(currentUser, body) {
+        const administratorEmail = env.BOOKING_EMAIL_TO.trim();
+        if (!administratorEmail) {
+            throw new HttpException("Account deletion approval is unavailable because the administrator email is not configured.", HttpStatus.SERVICE_UNAVAILABLE);
+        }
         const user = await this.prisma.user.findUnique({
             where: { id: currentUser.id },
             select: {
@@ -222,7 +272,7 @@ let UsersService = class UsersService {
             requestId: deletionRequest.id,
             confirmationUrl: `${frontendUrl}/?deleteAccountToken=${rawToken}`,
             cancellationUrl: `${frontendUrl}/?cancelDeleteAccountToken=${rawToken}`,
-            adminRecipient: env.BOOKING_EMAIL_TO.trim() || undefined,
+            adminRecipient: administratorEmail,
         });
         return {
             success: true,
