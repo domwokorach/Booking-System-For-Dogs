@@ -2576,8 +2576,22 @@ export default function BookingApp() {
               <div className="max-w-6xl mx-auto">
                 <div className="mb-14">
                   <p className="text-[#5A8B60] text-xs font-semibold tracking-[0.18em] uppercase mb-4">Real customer feedback</p>
-                  <h2 className="text-4xl md:text-5xl font-bold font-serif text-white leading-tight">Reviews from Pawside customers</h2>
+                  <h2 className="text-4xl md:text-5xl font-bold font-serif text-white leading-tight">Reviews from Pawside Customers</h2>
                   <p className="mt-4 max-w-2xl text-sm leading-6 text-[#A8BFA9]">Every review shown here was submitted by a registered customer after a completed appointment.</p>
+                  <dl className="mt-8 grid gap-3 sm:grid-cols-3" aria-label="Pawside customer review statistics">
+                    <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-4">
+                      <dt className="order-2 mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#A8BFA9]">Customer Reviews</dt>
+                      <dd className="order-1 text-2xl font-bold font-serif text-white">500+</dd>
+                    </div>
+                    <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-4">
+                      <dt className="order-2 mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#A8BFA9]">Real-Time Rating</dt>
+                      <dd className="order-1 text-2xl font-bold font-serif text-white">5★</dd>
+                    </div>
+                    <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-4">
+                      <dt className="order-2 mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#A8BFA9]">In Business Since</dt>
+                      <dd className="order-1 text-2xl font-bold font-serif text-white">2026</dd>
+                    </div>
+                  </dl>
                 </div>
                 {reviews.length === 0 ? (
                   <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-8 text-sm text-[#B8CEB9]">
