@@ -107,7 +107,10 @@ export class PaymentsService {
         integration_identifier: `pawside_checkout_${randomLetterSuffix()}`,
         client_reference_id: input.appointmentId,
         customer_email: input.customerEmail,
-        invoice_creation: { enabled: true },
+        invoice_creation: {
+          enabled: true,
+          invoice_data: { metadata },
+        },
         billing_address_collection: "required",
         line_items: [
           {

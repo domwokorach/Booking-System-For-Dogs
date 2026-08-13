@@ -168,6 +168,26 @@ are not required for the payment flow. The
 publishable key is configured for future client-side Stripe.js features only;
 the secret key must remain in `backend/.env`.
 
+### Stripe receipts and paid invoices
+
+Pawside supplies the registered customer email to Checkout and enables
+`invoice_creation` for each one-time payment. The generated invoice carries the
+Pawside appointment, payment, and user IDs as Stripe metadata. After a
+signature-verified successful Checkout webhook, the backend stores the
+Checkout Session's invoice ID in `Payment.stripeInvoiceId`.
+
+Stripe email delivery also requires this one-time Dashboard configuration for
+each mode used by the application (test and live settings are separate):
+
+1. Open **Settings → Business → Customer emails** in Stripe.
+2. Under **Email customers about**, enable **Successful payments**.
+3. Enable refund emails as well if Stripe should notify customers about
+   completed refunds.
+
+With **Successful payments** enabled, Stripe emails the customer an invoice
+summary after successful payment with links to the paid-invoice PDF and invoice
+receipt. One-time Checkout invoice creation is priced separately by Stripe.
+
 For local webhook delivery, run the Stripe CLI in a separate terminal and copy
 the displayed `whsec_...` signing secret into `STRIPE_WEBHOOK_SECRET`. Include
 both Checkout and refund lifecycle events:
