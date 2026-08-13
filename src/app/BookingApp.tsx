@@ -38,6 +38,7 @@ import {
 } from "date-fns";
 import { io } from "socket.io-client";
 import { getStatusStyles } from "./lib/booking-status";
+import { CookiePreferences } from "./pages/CookiePreferences";
 import { TermsAndConditions } from "./pages/TermsAndConditions";
 import {
   BUSINESS_TIME_ZONE,
@@ -47,7 +48,7 @@ import {
 
 type ServiceId = "grooming" | "training" | "daycare" | "boarding";
 type AuthMode = "login" | "register";
-type CurrentView = "home" | "login" | "register" | "forgot-password" | "reset-password" | "dashboard" | "terms" | "cancel-appointment-confirm" | "delete-appointment-confirm" | "delete-account-confirm" | "delete-account-cancel";
+type CurrentView = "home" | "login" | "register" | "forgot-password" | "reset-password" | "dashboard" | "terms" | "cookie-preferences" | "cancel-appointment-confirm" | "delete-appointment-confirm" | "delete-account-confirm" | "delete-account-cancel";
 type HomeSection = "services" | "booking" | "about";
 
 interface BookingState {
@@ -603,6 +604,9 @@ export default function BookingApp() {
     const initialSection = homeSectionFromHash(window.location.hash);
     const isPasswordResetPath = /\/reset-password\/?$/.test(window.location.pathname);
     const isTermsPath = /\/terms-and-conditions\/?$/.test(window.location.pathname);
+    const isCookiePreferencesPath = /\/cookie-preferences\/?$/.test(
+      window.location.pathname,
+    );
     const initialPasswordResetToken = isPasswordResetPath
       ? searchParams.get("token")
       : null;
@@ -651,7 +655,16 @@ export default function BookingApp() {
     if (!deletionActionView && !isPasswordResetPath && isTermsPath) {
       setCurrentView("terms");
     }
-    if (!deletionActionView && !isPasswordResetPath && !isTermsPath && initialSection) {
+    if (!deletionActionView && !isPasswordResetPath && isCookiePreferencesPath) {
+      setCurrentView("cookie-preferences");
+    }
+    if (
+      !deletionActionView &&
+      !isPasswordResetPath &&
+      !isTermsPath &&
+      !isCookiePreferencesPath &&
+      initialSection
+    ) {
       setCurrentView("home");
       setSectionTarget(initialSection);
     }
@@ -664,7 +677,13 @@ export default function BookingApp() {
 
     setUser(savedSession.user);
     setToken(savedSession.token);
-    if (!deletionActionView && !isPasswordResetPath && !isTermsPath && !initialSection) {
+    if (
+      !deletionActionView &&
+      !isPasswordResetPath &&
+      !isTermsPath &&
+      !isCookiePreferencesPath &&
+      !initialSection
+    ) {
       setCurrentView("dashboard");
     }
   }, []);
@@ -730,6 +749,12 @@ export default function BookingApp() {
     function handlePopState() {
       if (/\/terms-and-conditions\/?$/.test(window.location.pathname)) {
         setCurrentView("terms");
+        setMenuOpen(false);
+        return;
+      }
+
+      if (/\/cookie-preferences\/?$/.test(window.location.pathname)) {
+        setCurrentView("cookie-preferences");
         setMenuOpen(false);
         return;
       }
@@ -1771,6 +1796,12 @@ export default function BookingApp() {
     setMenuOpen(false);
   }
 
+  function navigateToCookiePreferences() {
+    window.history.pushState({}, "", "/cookie-preferences");
+    setCurrentView("cookie-preferences");
+    setMenuOpen(false);
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground font-sans">
       <nav className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border">
@@ -1822,7 +1853,9 @@ export default function BookingApp() {
       </nav>
 
       <div className="pt-16">
-        {currentView === "terms" ? (
+        {currentView === "cookie-preferences" ? (
+          <CookiePreferences onNavigateHome={navigateHome} />
+        ) : currentView === "terms" ? (
           <TermsAndConditions onNavigateHome={navigateHome} />
         ) : currentView === "cancel-appointment-confirm" ? (
           <section className="min-h-[calc(100vh-4rem)] px-6 py-16 flex items-center justify-center">
@@ -2732,16 +2765,28 @@ export default function BookingApp() {
                   <p className="text-xs text-muted-foreground">
                     © 2026 Pawside Dog Services. All rights reserved.
                   </p>
-                  <a
-                    href="/terms-and-conditions"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      navigateToTerms();
-                    }}
-                    className="text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    Terms and Conditions
-                  </a>
+                  <div className="flex flex-wrap justify-center gap-x-6 gap-y-2">
+                    <a
+                      href="/terms-and-conditions"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        navigateToTerms();
+                      }}
+                      className="text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      Terms and Conditions
+                    </a>
+                    <a
+                      href="/cookie-preferences"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        navigateToCookiePreferences();
+                      }}
+                      className="text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      Cookie Preferences
+                    </a>
+                  </div>
                 </div>
               </div>
             </footer>
