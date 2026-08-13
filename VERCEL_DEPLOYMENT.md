@@ -113,18 +113,23 @@ its own `postinstall` and `vercel-build` scripts.
 ### Weather refresh scheduling
 
 Active browsers poll `GET /api/weather` every five minutes. For weather email
-transitions to run even when nobody has the site open, configure a scheduler
-to call the backend's protected endpoint every 10 minutes:
+transitions to run even when nobody has the site open, the repository's
+`.github/workflows/weather-refresh.yml` workflow calls the backend's protected
+endpoint every 10 minutes:
 
 ```text
 GET https://YOUR-BACKEND.vercel.app/api/weather/refresh
 Authorization: Bearer YOUR_CRON_SECRET
 ```
 
-Vercel Pro and Enterprise projects can register that endpoint as a 10-minute
-Cron Job. Do not add a 10-minute Vercel Cron to a Hobby project because Hobby
-cron schedules may run only once per day. A separate scheduler can call the
-same protected endpoint on the desired interval.
+Add a GitHub Actions repository secret named `PAWSIDE_CRON_SECRET` with exactly
+the same value as the backend Vercel project's `CRON_SECRET`. The workflow can
+also be run manually from the repository's Actions tab for verification.
+
+This GitHub scheduler is intentionally plan-independent. Vercel Pro and
+Enterprise can instead register the same endpoint as a 10-minute Cron Job, but
+a 10-minute Vercel Cron must not be added to a Hobby project because Hobby cron
+schedules may run only once per day.
 
 ## 4. Configure Stripe
 

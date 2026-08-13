@@ -96,6 +96,12 @@ Socket.IO uses the same backend server and port. Clients authenticate with an
 access token in `handshake.auth.token` and receive appointment events in their
 user-specific room.
 
+The public weather status route uses cached current conditions. The protected
+`GET /api/weather/refresh` route forces a provider refresh and processes
+unsafe/safe-again email transitions. In production it is called every 10
+minutes by `.github/workflows/weather-refresh.yml`; the repository secret
+`PAWSIDE_CRON_SECRET` must match the backend `CRON_SECRET` environment value.
+
 ## Local development
 
 Requirements:
