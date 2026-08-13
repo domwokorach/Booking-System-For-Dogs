@@ -34,6 +34,21 @@ Prisma ORM
 PostgreSQL
 ```
 
+PostgreSQL is the system of record for customers, bookings, services,
+payments, and reviews. Prisma is the database access layer used by NestJS; it
+is not a database. The frontend never connects to PostgreSQL directly.
+
+```text
+NestJS ──→ Prisma ──→ PostgreSQL
+   │
+   ├─────→ Stripe (card processing)
+   │
+   └─────→ AWS S3 / Google Cloud Storage (uploaded files)
+```
+
+Only Stripe identifiers and payment state are stored in PostgreSQL. Card
+numbers, CVCs, and other sensitive card details remain with Stripe.
+
 Docker can run both the API and database:
 
 ```text
@@ -228,21 +243,21 @@ secrets/
 
 ## Database Models
 
-Main PostgreSQL tables:
+Main PostgreSQL records:
 
 ```text
 User
 Service
-AppointmentSlot
-Booking
-BookingEvent
-Notification
+Appointment (the persisted booking)
+Payment
+Review
 ```
 
 ### User
 
 ```text
 id
+customerReference
 firstName
 surname
 address
@@ -260,30 +275,78 @@ id
 name
 description
 durationMinutes
+pricePence
 active
 ```
 
-### AppointmentSlot
-
-```text
-id
-serviceId
-startAt
-endAt
-active
-```
-
-### Booking
+### Appointment / Booking
 
 ```text
 id
 userId
 serviceId
-slotId
-appointmentDate
+dateTime
+durationMinutes
 status
+notes
+confirmedAt
+cancelledAt
 createdAt
 updatedAt
+```
+
+The API calls these records bookings, while the Prisma model is named
+`Appointment`. This is one record rather than separate, duplicated booking and
+appointment rows.
+
+### Appointment slots
+
+Available slots are derived from the configured business hours, service
+duration, business timezone, and active appointments. Competing slot claims
+are serialized in a PostgreSQL transaction and protected by a database overlap
+constraint. This prevents a persisted `available` flag from becoming stale.
+
+The slot API still returns the logical slot fields used by the frontend:
+
+```text
+id
+serviceId
+date
+time
+startAt
+endAt
+active
+```
+
+### Payment
+
+```text
+id
+appointmentId
+userId
+serviceId
+stripeCheckoutSessionId
+stripePaymentIntentId
+stripeInvoiceId
+stripeRefundId
+amountPence
+currency
+status
+paidAt
+refundRequestedAt
+refundedAt
+refundFailedAt
+```
+
+### Review
+
+```text
+id
+customerId
+appointmentId
+rating
+comment
+createdAt
 ```
 
 ## API Routes
