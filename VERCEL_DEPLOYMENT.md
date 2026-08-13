@@ -15,20 +15,22 @@ from `backend/src/main.ts`.
 
 ## 1. Create production PostgreSQL
 
-Create a managed PostgreSQL database through the Vercel Marketplace (for
-example Prisma Postgres or Neon) and connect it only to the backend project.
-Use its pooled production connection string as `DATABASE_URL`. Never use a
-`localhost` database URL in Vercel.
+Create a managed PostgreSQL database. When using Render Postgres with a backend
+hosted on Vercel, copy Render's **External Database URL** into the Vercel
+backend project's `DATABASE_URL`. Render's internal URL is only reachable from
+Render services on its private network. Never use a `localhost` database URL
+in Vercel, and never expose the database URL to the frontend.
 
-Apply the committed Prisma migrations before serving production traffic:
+The backend's Vercel build runs both Prisma Client generation and the committed
+production migrations before compiling NestJS:
 
 ```bash
-pnpm --dir backend run prisma:migrate:deploy
+pnpm --dir backend run vercel-build
 ```
 
-Run this from CI/CD with the production `DATABASE_URL`. The backend's
-`prisma.config.ts` reads that URL for Prisma CLI commands, and the backend's
-`postinstall` script generates Prisma Client during every deployment.
+The backend's `prisma.config.ts` reads `DATABASE_URL` for migration commands.
+`prisma generate` creates Prisma Client; `prisma migrate deploy` creates or
+updates the PostgreSQL tables from `backend/prisma/migrations/`.
 
 ## 2. Deploy the backend
 
