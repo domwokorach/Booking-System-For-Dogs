@@ -5,6 +5,7 @@ import {
   sendBookingCancellationEmail,
   sendBookingConfirmationEmail,
   sendBookingUpdateEmail,
+  sendCancellationApprovalRequestEmail,
   sendDeletionRequestEmail,
   sendPasswordResetEmail,
   sendRefundConfirmationEmail,
@@ -47,6 +48,15 @@ export class EmailService {
 
   sendBookingCancellation(data: BookingEmailData): Promise<boolean> {
     return sendBookingCancellationEmail(data);
+  }
+
+  sendCancellationApprovalRequest(
+    data: BookingEmailData & { approvalUrl: string; expiresAt: Date },
+  ): Promise<{
+    customerDelivered: boolean;
+    administratorDelivered: boolean;
+  }> {
+    return sendCancellationApprovalRequestEmail(data);
   }
 
   sendRefundRequested(data: BookingEmailData): Promise<boolean> {

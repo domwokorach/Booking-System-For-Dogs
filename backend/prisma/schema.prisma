@@ -8,10 +8,17 @@ datasource db {
 }
 
 enum AppointmentStatus {
-  Pending     @map("PENDING")
-  Confirmed   @map("CONFIRMED")
-  Rescheduled @map("RESCHEDULED")
-  Cancelled   @map("CANCELLED")
+  Pending             @map("PENDING")
+  Confirmed           @map("CONFIRMED")
+  Rescheduled         @map("RESCHEDULED")
+  CancellationPending @map("CANCELLATION_PENDING")
+  Cancelled           @map("CANCELLED")
+}
+
+enum AppointmentCancellationRequestStatus {
+  PENDING
+  PROCESSING
+  APPROVED
 }
 
 enum AccountDeletionRequestStatus {
@@ -63,29 +70,45 @@ model Service {
 }
 
 model Appointment {
-  id                String                      @id @default(uuid())
-  userId            String
-  user              User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  serviceId         String?
-  serviceRef        Service?                    @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  dateTime          DateTime
-  durationMinutes   Int                         @default(60)
-  status            AppointmentStatus           @default(Pending)
-  service           String?
-  notes             String?
-  confirmedAt       DateTime?
-  cancelledAt       DateTime?
-  deleteRequestedAt DateTime?
-  rescheduledFrom   DateTime?
-  deletionRequest   AppointmentDeletionRequest?
-  review            Review?
-  payments          Payment[]
-  createdAt         DateTime                    @default(now())
-  updatedAt         DateTime                    @updatedAt
+  id                      String                          @id @default(uuid())
+  userId                  String
+  user                    User                            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceId               String?
+  serviceRef              Service?                        @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  dateTime                DateTime
+  durationMinutes         Int                             @default(60)
+  status                  AppointmentStatus               @default(Pending)
+  service                 String?
+  notes                   String?
+  confirmedAt             DateTime?
+  cancelledAt             DateTime?
+  cancellationRequestedAt DateTime?
+  deleteRequestedAt       DateTime?
+  rescheduledFrom         DateTime?
+  deletionRequest         AppointmentDeletionRequest?
+  cancellationRequest     AppointmentCancellationRequest?
+  review                  Review?
+  payments                Payment[]
+  createdAt               DateTime                        @default(now())
+  updatedAt               DateTime                        @updatedAt
 
   @@index([userId])
   @@index([dateTime])
   @@index([serviceId])
+}
+
+model AppointmentCancellationRequest {
+  id            String                               @id @default(uuid())
+  appointmentId String                               @unique
+  appointment   Appointment                          @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  tokenHash     String                               @unique
+  status        AppointmentCancellationRequestStatus @default(PENDING)
+  expiresAt     DateTime
+  approvedAt    DateTime?
+  createdAt     DateTime                             @default(now())
+  updatedAt     DateTime                             @updatedAt
+
+  @@index([status, expiresAt])
 }
 
 model Payment {

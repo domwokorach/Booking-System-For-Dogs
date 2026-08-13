@@ -164,6 +164,33 @@ export async function sendBookingCancellationEmail(data: BookingEmailData) {
   return results.every(Boolean);
 }
 
+export async function sendCancellationApprovalRequestEmail(
+  data: BookingEmailData & { approvalUrl: string; expiresAt: Date },
+) {
+  const safeApprovalUrl = escapeHtml(data.approvalUrl);
+  const safeBookingId = escapeHtml(data.bookingId ?? "Not available");
+  const safeService = escapeHtml(formatService(data.service));
+  const amount = formatAmount(data);
+
+  const [customerDelivered, administratorDelivered] = await Promise.all([
+    sendMailSafely({
+      from: env.EMAIL_FROM,
+      to: data.to,
+      subject: "Cancellation pending approval",
+      text: `Hi ${data.firstName},\n\nYour cancellation request is pending administrator approval. Your booking remains active until the request is approved.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nSelected service: ${formatService(data.service)}\nAppointment date: ${formatDate(data.appointmentDateTime)}\nAppointment time: ${formatTime(data.appointmentDateTime)}${data.amountPence !== undefined ? `\nRefund amount after approval: ${amount}` : ""}\n\nAfter approval, any eligible refund will be submitted through Stripe. Card refunds typically appear within approximately 5–10 business days, depending on the bank.`,
+    }),
+    sendMailSafely({
+      from: env.EMAIL_FROM,
+      to: resolveBookingRecipient(data.to),
+      subject: "Booking cancellation approval requested",
+      text: `A booking cancellation request needs administrator approval.\n\nBooking ID: ${data.bookingId ?? "Not available"}\nCustomer: ${data.firstName}\nSelected service: ${formatService(data.service)}\nAppointment date: ${formatDate(data.appointmentDateTime)}\nAppointment time: ${formatTime(data.appointmentDateTime)}${data.amountPence !== undefined ? `\nRefund amount: ${amount}` : ""}\n\nApprove cancellation: ${data.approvalUrl}\n\nThis secure, single-use link expires at ${formatDateTime(data.expiresAt)}.`,
+      html: `<p>A booking cancellation request needs administrator approval.</p><p><strong>Booking ID:</strong> ${safeBookingId}</p><p><strong>Selected service:</strong> ${safeService}</p>${data.amountPence !== undefined ? `<p><strong>Refund amount:</strong> ${escapeHtml(amount)}</p>` : ""}<p><a href="${safeApprovalUrl}" style="display:inline-block;padding:12px 18px;background:#b91c1c;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Review cancellation request</a></p><p>This secure, single-use link expires in 30 minutes.</p>`,
+    }),
+  ]);
+
+  return { customerDelivered, administratorDelivered };
+}
+
 export async function sendRefundRequestedEmail(data: BookingEmailData) {
   const amount = formatAmount(data);
   const results = await Promise.all(

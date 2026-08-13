@@ -141,9 +141,12 @@ export class BookingsService {
     query: RescheduleBookingSlotsQuery,
   ) {
     const existing = await this.findOwnedWithUser(user.id, id);
-    if (existing.status === AppointmentStatus.Cancelled) {
+    if (
+      existing.status === AppointmentStatus.Cancelled ||
+      existing.status === AppointmentStatus.CancellationPending
+    ) {
       throw new BadRequestException(
-        "Cancelled bookings cannot be rescheduled.",
+        "Cancelled bookings and pending cancellation requests cannot be rescheduled.",
       );
     }
 
@@ -177,9 +180,12 @@ export class BookingsService {
 
   async confirm(user: AuthUser, id: string) {
     const existing = await this.findOwnedWithUser(user.id, id);
-    if (existing.status === AppointmentStatus.Cancelled) {
+    if (
+      existing.status === AppointmentStatus.Cancelled ||
+      existing.status === AppointmentStatus.CancellationPending
+    ) {
       throw new BadRequestException(
-        "Cancelled appointments cannot be confirmed.",
+        "Cancelled appointments and pending cancellation requests cannot be confirmed.",
       );
     }
 
@@ -268,9 +274,12 @@ export class BookingsService {
     const service = await this.resolveActiveService(slot.serviceId);
     const existing = await this.findOwnedWithUser(user.id, id);
 
-    if (existing.status === AppointmentStatus.Cancelled) {
+    if (
+      existing.status === AppointmentStatus.Cancelled ||
+      existing.status === AppointmentStatus.CancellationPending
+    ) {
       throw new BadRequestException(
-        "Cancelled bookings cannot be rescheduled.",
+        "Cancelled bookings and pending cancellation requests cannot be rescheduled.",
       );
     }
 
@@ -334,61 +343,16 @@ export class BookingsService {
   }
 
   async cancel(user: AuthUser, id: string) {
-    const refund = await this.payments.cancelAndRefund(user, id);
-    if (refund) {
-      return refund;
-    }
-
-    const existing = await this.findOwnedWithUser(user.id, id);
-    if (existing.status === AppointmentStatus.Cancelled) {
-      return toBookingMutationResponse(
-        existing,
-        "Appointment cancelled successfully",
-      );
-    }
-
-    const updated = await this.prisma.$transaction(async (transaction) => {
-      const changed = await transaction.appointment.updateMany({
-        where: {
-          id,
-          userId: user.id,
-          status: existing.status,
-          dateTime: existing.dateTime,
-          updatedAt: existing.updatedAt,
-        },
-        data: {
-          status: AppointmentStatus.Cancelled,
-          cancelledAt: new Date(),
-        },
-      });
-
-      if (changed.count !== 1) {
-        throw new ConflictException("The booking state changed. Please retry.");
-      }
-
-      return this.findOwnedWithUser(user.id, id, transaction);
-    });
-    this.realtime.emitToUser(user.id, "appointments:cancelled", {
-      appointmentId: updated.id,
-      dateTime: updated.dateTime,
-      status: updated.status,
-    });
-    await this.email.sendBookingCancellation({
-      to: updated.user.email,
-      firstName: updated.user.firstName,
-      bookingId: updated.id,
-      service: updated.service,
-      appointmentDateTime: updated.dateTime,
-      status: toApiStatus(updated.status),
-    });
-    return toBookingMutationResponse(
-      updated,
-      "Appointment cancelled successfully",
-    );
+    return this.payments.requestCancellation(user, id);
   }
 
   async requestDeletion(user: AuthUser, id: string) {
-    await this.findOwnedWithUser(user.id, id);
+    const existing = await this.findOwnedWithUser(user.id, id);
+    if (existing.status === AppointmentStatus.CancellationPending) {
+      throw new ConflictException(
+        "This booking cannot be deleted while cancellation approval is pending.",
+      );
+    }
     const rawToken = randomBytes(32).toString("hex");
     const tokenHash = this.hashAppointmentDeletionToken(rawToken);
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);

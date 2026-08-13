@@ -24,7 +24,7 @@ export function parseSlotId(slotId: string): {
 }
 
 export function toApiStatus(status: AppointmentStatus): string {
-  return status.toUpperCase();
+  return status.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
 }
 
 export function formatDate(value: Date): string {

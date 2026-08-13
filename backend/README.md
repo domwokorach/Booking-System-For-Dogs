@@ -184,14 +184,18 @@ but that return page is informational only: only a signature-verified Stripe
 webhook changes the payment to `PAID` and the appointment to `CONFIRMED`. The
 confirmation email is sent after that database transaction succeeds.
 
-Cancelling a paid appointment creates one full Stripe refund using the stored
-PaymentIntent and a stable idempotency key. The appointment changes to
-`CANCELLED` and the payment changes to `REFUND_PENDING`; cancelled appointments
-no longer reserve their time slot. Only a signature-verified `refund.created`,
-`refund.updated`, or `refund.failed` webhook can move the payment to `REFUNDED`
-or `REFUND_FAILED`. Customer emails are sent when the refund is requested and
-when Stripe confirms its final state. Configure the production Stripe webhook
-endpoint to deliver all three refund events.
+Cancelling an appointment first changes it to `CANCELLATION_PENDING`, creates a
+single-use approval token, and emails an administrator approval link. The
+appointment continues to reserve its time slot while approval is pending.
+Approval changes the appointment to `CANCELLED` and, for a captured payment,
+creates one full Stripe refund using the stored PaymentIntent and a stable
+idempotency key. The payment changes to `REFUND_PENDING`; only then is the slot
+released. Only a signature-verified `refund.created`, `refund.updated`, or
+`refund.failed` webhook can move the payment to `REFUNDED` or `REFUND_FAILED`.
+Customer emails are sent when cancellation is requested, when the refund is
+submitted, and when Stripe confirms its final state. Stripe advises that card
+refunds typically appear within approximately 5–10 business days, depending on
+the customer's bank.
 
 This schema keeps appointment and payment state in normalized tables. Inspect
 the latest payment for each appointment with:

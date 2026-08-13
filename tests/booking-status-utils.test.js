@@ -14,4 +14,16 @@ describe('booking status utilities', () => {
       expect.objectContaining({ label: 'Confirmed', badgeClass: expect.stringContaining('emerald') }),
     );
   });
+
+  test.each(['CancellationPending', 'CANCELLATION_PENDING'])(
+    'shows cancellation pending for %s',
+    (status) => {
+      expect(getStatusStyles(status)).toEqual(
+        expect.objectContaining({
+          label: 'Cancellation pending',
+          badgeClass: expect.stringContaining('amber'),
+        }),
+      );
+    },
+  );
 });

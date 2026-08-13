@@ -19,7 +19,10 @@ export function getReviewEligibility(
     return { canReview: false, reason: "ALREADY_REVIEWED", availableAt: null };
   }
 
-  if (appointment.status === AppointmentStatus.Cancelled) {
+  if (
+    appointment.status === AppointmentStatus.Cancelled ||
+    appointment.status === AppointmentStatus.CancellationPending
+  ) {
     return { canReview: false, reason: "CANCELLED", availableAt: null };
   }
 

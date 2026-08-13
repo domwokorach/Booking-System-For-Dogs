@@ -26,6 +26,10 @@ export const approveAppointmentDeletionSchema = z.object({
   token: z.string().min(1),
 });
 
+export const approveAppointmentCancellationSchema = z.object({
+  token: z.string().min(1),
+});
+
 export type CreateAppointmentInput = z.infer<typeof createAppointmentSchema>;
 export type UpdateAppointmentInput = z.infer<typeof updateAppointmentSchema>;
 export type RescheduleAppointmentInput = z.infer<

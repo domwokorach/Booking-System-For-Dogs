@@ -8,6 +8,7 @@ const ACTIVE_APPOINTMENT_STATUSES: AppointmentStatus[] = [
   AppointmentStatus.Pending,
   AppointmentStatus.Confirmed,
   AppointmentStatus.Rescheduled,
+  AppointmentStatus.CancellationPending,
 ];
 const BUSINESS_HOURS = Array.from({ length: 9 }, (_, index) => 9 + index);
 

@@ -15,6 +15,7 @@ import type { AuthUser } from "../auth/auth.types.js";
 import { CurrentUser } from "../auth/current-user.decorator.js";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard.js";
 import {
+  approveAppointmentCancellationSchema,
   approveAppointmentDeletionSchema,
   availableAppointmentsQuerySchema,
   createAppointmentSchema,
@@ -43,6 +44,13 @@ export class AppointmentDeletionController {
   approveDeletion(@Body() body: unknown) {
     const { token } = approveAppointmentDeletionSchema.parse(body);
     return this.appointmentsService.approveDeletion(token);
+  }
+
+  @Post("cancel/confirm")
+  @HttpCode(HttpStatus.OK)
+  approveCancellation(@Body() body: unknown) {
+    const { token } = approveAppointmentCancellationSchema.parse(body);
+    return this.appointmentsService.approveCancellation(token);
   }
 }
 

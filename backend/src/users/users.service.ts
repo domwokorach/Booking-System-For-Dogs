@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { AppointmentStatus, PaymentStatus, Prisma } from "@prisma/client";
 import argon2 from "argon2";
 import bcrypt from "bcryptjs";
 
@@ -44,6 +44,22 @@ export class UsersService {
     if (storedRequest.status === "CANCELLED") {
       throw new HttpException(
         "This account deletion request has been cancelled.",
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    const unresolvedFinancialWorkflow = await this.prisma.appointment.count({
+      where: {
+        userId: storedRequest.user.id,
+        OR: [
+          { status: AppointmentStatus.CancellationPending },
+          { payments: { some: { status: PaymentStatus.RefundPending } } },
+        ],
+      },
+    });
+    if (unresolvedFinancialWorkflow > 0) {
+      throw new HttpException(
+        "This account cannot be deleted while a cancellation or refund is still processing.",
         HttpStatus.CONFLICT,
       );
     }

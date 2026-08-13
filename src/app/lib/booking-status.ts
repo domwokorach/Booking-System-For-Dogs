@@ -11,6 +11,14 @@ const STATUS_STYLES: Record<string, { label: string; badgeClass: string }> = {
     label: "Rescheduled",
     badgeClass: "bg-sky-100 text-sky-700 border border-sky-300",
   },
+  CancellationPending: {
+    label: "Cancellation pending",
+    badgeClass: "bg-amber-100 text-amber-800 border border-amber-300",
+  },
+  CANCELLATION_PENDING: {
+    label: "Cancellation pending",
+    badgeClass: "bg-amber-100 text-amber-800 border border-amber-300",
+  },
   Cancelled: {
     label: "Cancelled",
     badgeClass: "bg-rose-100 text-rose-700 border border-rose-300",

@@ -404,6 +404,18 @@ The authenticated request endpoint emails the administrator a single-use
 approval link. Only a SHA-256 token hash is stored in PostgreSQL, and the link
 expires after 30 minutes.
 
+### Appointment cancellation approval
+
+```http
+PATCH /api/appointments/:id/cancel
+POST  /api/appointments/cancel/confirm
+```
+
+The authenticated cancellation endpoint changes the booking to
+`CANCELLATION_PENDING` and emails the administrator a secure, single-use
+approval link. The booking continues to reserve its slot. Approval changes the
+booking to `CANCELLED` and submits any eligible refund through Stripe.
+
 ## Confirm Appointment
 
 Frontend request:
@@ -477,13 +489,17 @@ Example request:
 PATCH /api/bookings/:id/cancel
 ```
 
-The booking status becomes:
+The booking first becomes:
 
 ```text
-CANCELLED
+CANCELLATION_PENDING
 ```
 
-The previous appointment slot should be released so it can become available again.
+The appointment remains active and continues to reserve its slot until the
+administrator approves the cancellation. After approval, it becomes
+`CANCELLED`, the slot is released, and any eligible refund is submitted through
+Stripe. Card refunds typically appear within approximately 5–10 business days,
+depending on the customer's bank.
 
 ## Email Notifications
 

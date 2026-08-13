@@ -46,7 +46,7 @@ import {
 
 type ServiceId = "grooming" | "training" | "daycare" | "boarding";
 type AuthMode = "login" | "register";
-type CurrentView = "home" | "login" | "register" | "forgot-password" | "reset-password" | "dashboard" | "delete-appointment-confirm" | "delete-account-confirm" | "delete-account-cancel";
+type CurrentView = "home" | "login" | "register" | "forgot-password" | "reset-password" | "dashboard" | "cancel-appointment-confirm" | "delete-appointment-confirm" | "delete-account-confirm" | "delete-account-cancel";
 type HomeSection = "services" | "booking" | "about";
 
 interface BookingState {
@@ -74,6 +74,7 @@ interface AppointmentRecord {
   service?: string | null;
   notes?: string | null;
   deleteRequestedAt?: string | null;
+  cancellationRequestedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   review?: { id: string } | null;
@@ -111,6 +112,7 @@ interface AppointmentMutationResponse {
   service?: string | null;
   notes?: string | null;
   deleteRequestedAt?: string | null;
+  cancellationRequestedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
   notificationRecipient?: string;
@@ -118,6 +120,7 @@ interface AppointmentMutationResponse {
   checkoutUrl?: string;
   checkoutSessionId?: string;
   paymentStatus?: string;
+  cancellationStatus?: string;
   refundStatus?: string;
   refundId?: string | null;
   refundAmountPence?: number;
@@ -135,6 +138,10 @@ interface StoredSession {
   user: UserProfile;
   token: string;
   refreshToken?: string;
+}
+
+function isCancellationPendingStatus(status: string): boolean {
+  return status.replaceAll("_", "").toLowerCase() === "cancellationpending";
 }
 
 const API_URL = (import.meta.env.VITE_API_URL?.trim() || "").replace(/\/+$/, "");
@@ -544,6 +551,8 @@ export default function BookingApp() {
     confirmation: "",
   });
   const [accountDeletionToken, setAccountDeletionToken] = useState<string | null>(null);
+  const [appointmentCancellationToken, setAppointmentCancellationToken] = useState<string | null>(null);
+  const [appointmentCancellationCompleted, setAppointmentCancellationCompleted] = useState(false);
   const [appointmentDeletionToken, setAppointmentDeletionToken] = useState<string | null>(null);
   const [appointmentDeletionCompleted, setAppointmentDeletionCompleted] = useState(false);
 
@@ -588,6 +597,7 @@ export default function BookingApp() {
       : null;
     const deletionToken = searchParams.get("deleteAccountToken");
     const cancellationToken = searchParams.get("cancelDeleteAccountToken");
+    const initialAppointmentCancellationToken = searchParams.get("cancelAppointmentToken");
     const initialAppointmentDeletionToken = searchParams.get("deleteAppointmentToken");
     if (
       searchParams.has("payment") ||
@@ -599,9 +609,11 @@ export default function BookingApp() {
       ? "delete-account-cancel"
       : deletionToken
         ? "delete-account-confirm"
-        : initialAppointmentDeletionToken
-          ? "delete-appointment-confirm"
-          : null;
+        : initialAppointmentCancellationToken
+          ? "cancel-appointment-confirm"
+          : initialAppointmentDeletionToken
+            ? "delete-appointment-confirm"
+            : null;
 
     if (cancellationToken) {
       setAccountDeletionToken(cancellationToken);
@@ -611,6 +623,9 @@ export default function BookingApp() {
     }
     if (initialAppointmentDeletionToken) {
       setAppointmentDeletionToken(initialAppointmentDeletionToken);
+    }
+    if (initialAppointmentCancellationToken) {
+      setAppointmentCancellationToken(initialAppointmentCancellationToken);
     }
     if (deletionActionView) {
       setCurrentView(deletionActionView);
@@ -1184,6 +1199,46 @@ export default function BookingApp() {
     setCurrentView(user ? "dashboard" : "home");
   }
 
+  async function handleConfirmAppointmentCancellation() {
+    if (!appointmentCancellationToken) {
+      setFeedback("This appointment cancellation link is invalid.");
+      return;
+    }
+
+    setLoading(true);
+    setFeedback(null);
+    setAppointmentCancellationCompleted(false);
+
+    try {
+      const response = await fetch(`${API_URL}/api/appointments/cancel/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: appointmentCancellationToken }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.message || "Unable to approve the appointment cancellation.");
+      }
+
+      window.history.replaceState({}, "", window.location.pathname);
+      setAppointmentCancellationToken(null);
+      setAppointmentCancellationCompleted(true);
+      setFeedback(data?.message || "Cancellation approved.");
+    } catch (error) {
+      setFeedback((error as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function leaveAppointmentCancellationApproval() {
+    window.history.replaceState({}, "", window.location.pathname);
+    setAppointmentCancellationToken(null);
+    setAppointmentCancellationCompleted(false);
+    setFeedback(null);
+    setCurrentView(user ? "dashboard" : "home");
+  }
+
   async function handleConfirmAppointmentDeletion() {
     if (!appointmentDeletionToken) {
       setFeedback("This appointment deletion link is invalid.");
@@ -1464,8 +1519,8 @@ export default function BookingApp() {
       const paid = selectedAppointment?.paymentStatus === "PAID";
       const confirmed = window.confirm(
         paid
-          ? "Are you sure you want to cancel this appointment and request a full refund?"
-          : "Are you sure you want to cancel this appointment?",
+          ? "Request cancellation approval? The booking remains active until approved. After approval, a full Stripe refund will be submitted."
+          : "Request cancellation approval? The booking remains active until approved.",
       );
       if (!confirmed) {
         return;
@@ -1511,9 +1566,9 @@ export default function BookingApp() {
               ? `Booking cancelled, but Stripe could not complete your refund of ${refundAmount}. Please contact us so we can arrange an alternative refund.`
               : action === "confirm" && data.emailDelivered && data.notificationRecipient
           ? `Appointment confirmed. A confirmation email has been sent to ${data.notificationRecipient}.`
-          : action === "confirm"
-            ? "Appointment confirmed, but the confirmation email could not be delivered. Please check your registered email address or contact us."
-            : "Appointment cancelled.",
+            : action === "confirm"
+              ? "Appointment confirmed, but the confirmation email could not be delivered. Please check your registered email address or contact us."
+            : data.message || "Cancellation is pending approval.",
       );
       await loadAppointments();
     } catch (error) {
@@ -1699,7 +1754,44 @@ export default function BookingApp() {
       </nav>
 
       <div className="pt-16">
-        {currentView === "delete-appointment-confirm" ? (
+        {currentView === "cancel-appointment-confirm" ? (
+          <section className="min-h-[calc(100vh-4rem)] px-6 py-16 flex items-center justify-center">
+            <div className={`w-full max-w-xl rounded-3xl border bg-card p-8 text-center shadow-sm ${appointmentCancellationCompleted ? "border-emerald-200" : "border-amber-200"}`}>
+              <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full ${appointmentCancellationCompleted ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"}`}>
+                {appointmentCancellationCompleted ? <Check size={22} /> : <CalendarClock size={22} />}
+              </div>
+              <p className={`mt-6 text-sm font-semibold uppercase tracking-[0.2em] ${appointmentCancellationCompleted ? "text-emerald-700" : "text-amber-800"}`}>Administrator approval</p>
+              <h2 className="mt-2 text-3xl font-bold font-serif text-foreground">
+                {appointmentCancellationCompleted ? "Cancellation approved" : "Review booking cancellation"}
+              </h2>
+              <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                {appointmentCancellationCompleted
+                  ? "The booking is now cancelled. If payment was captured, the Stripe refund has been submitted and typically appears within 5–10 business days, depending on the bank."
+                  : "The booking remains active until you approve this request. Approval cancels the booking and submits any eligible refund through Stripe. This secure link expires after 30 minutes and can be used only once."}
+              </p>
+              {feedback ? (
+                <div role={appointmentCancellationCompleted ? "status" : "alert"} className={`mt-5 rounded-xl border px-4 py-3 text-sm ${appointmentCancellationCompleted ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+                  {feedback}
+                </div>
+              ) : null}
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                {!appointmentCancellationCompleted ? (
+                  <button
+                    type="button"
+                    onClick={handleConfirmAppointmentCancellation}
+                    disabled={loading || !appointmentCancellationToken}
+                    className="rounded-xl bg-amber-700 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {loading ? "Approving cancellation..." : "Approve cancellation"}
+                  </button>
+                ) : null}
+                <button type="button" onClick={leaveAppointmentCancellationApproval} className="rounded-xl border border-border px-5 py-3 text-sm font-semibold text-foreground">
+                  {appointmentCancellationCompleted ? "Return home" : "Leave without cancelling"}
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : currentView === "delete-appointment-confirm" ? (
           <section className="min-h-[calc(100vh-4rem)] px-6 py-16 flex items-center justify-center">
             <div className={`w-full max-w-xl rounded-3xl border bg-card p-8 text-center shadow-sm ${appointmentDeletionCompleted ? "border-emerald-200" : "border-red-200"}`}>
               <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full ${appointmentDeletionCompleted ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
@@ -1962,6 +2054,9 @@ export default function BookingApp() {
                       <div className="rounded-2xl border border-dashed border-border p-6 text-sm text-muted-foreground">No appointments yet. Use the booking panel to create one.</div>
                     ) : appointments.map((appointment) => {
                       const status = getStatusStyles(appointment.status);
+                      const cancellationPending = isCancellationPendingStatus(
+                        appointment.status,
+                      );
                       const isEditing = editingAppointmentId === appointment.id;
                       const isRescheduling = rescheduleAppointmentId === appointment.id;
                       const deletionRequested = Boolean(appointment.deleteRequestedAt);
@@ -1983,6 +2078,12 @@ export default function BookingApp() {
                             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${status.badgeClass}`}>{status.label}</span>
                           </div>
                           {appointment.notes ? <p className="mt-3 text-sm text-muted-foreground">{appointment.notes}</p> : null}
+                          {cancellationPending ? (
+                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                              <p className="font-semibold">Cancellation pending approval</p>
+                              <p className="mt-1">This booking remains active until approval. After approval, any eligible refund will be submitted through Stripe and typically appears within 5–10 business days, depending on the bank.</p>
+                            </div>
+                          ) : null}
                           {appointment.paymentStatus === "REFUND_PENDING" ? (
                             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                               <p className="font-semibold">Refund processing — {refundAmount}</p>
@@ -2000,22 +2101,30 @@ export default function BookingApp() {
                             </div>
                           ) : null}
                           <div className="mt-4 flex flex-wrap gap-2">
-                            {appointment.status.toLowerCase() === "pending" || appointment.status.toLowerCase() === "rescheduled" ? (
+                            {!cancellationPending && (appointment.status.toLowerCase() === "pending" || appointment.status.toLowerCase() === "rescheduled") ? (
                               <button onClick={() => handleAppointmentAction(appointment.id, "confirm")} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
                                 {appointment.status.toLowerCase() === "pending" ? "Pay now" : "Confirm"}
                               </button>
                             ) : null}
                             {appointment.status.toLowerCase() !== "cancelled" ? (
-                              <button onClick={() => handleAppointmentAction(appointment.id, "cancel")} className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">Cancel</button>
+                              <button onClick={() => handleAppointmentAction(appointment.id, "cancel")} className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                                {cancellationPending ? "Resend cancellation approval" : "Cancel"}
+                              </button>
                             ) : null}
-                            <button onClick={() => handleDeleteAppointment(appointment.id)} disabled={loading} className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-60">
-                              <span className="inline-flex items-center gap-1">
-                                <Trash2 size={14} />
-                                {deletionRequested ? "Resend deletion approval" : "Delete"}
-                              </span>
-                            </button>
-                            <button onClick={() => { setEditingAppointmentId(appointment.id); setEditDraft({ service: (appointment.serviceId ?? SERVICES.find((service) => service.name === appointment.service)?.id ?? null) as ServiceId | null, notes: appointment.notes || "" }); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Edit</button>
-                            <button onClick={() => { setRescheduleAppointmentId(appointment.id); setRescheduleServiceId(appointment.serviceId ?? SERVICES.find((service) => service.name === appointment.service)?.id ?? null); setRescheduleDate(appointmentBusinessDate(appointment.dateTime)); setRescheduleTime(null); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Reschedule</button>
+                            {!cancellationPending ? (
+                              <button onClick={() => handleDeleteAppointment(appointment.id)} disabled={loading} className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-60">
+                                <span className="inline-flex items-center gap-1">
+                                  <Trash2 size={14} />
+                                  {deletionRequested ? "Resend deletion approval" : "Delete"}
+                                </span>
+                              </button>
+                            ) : null}
+                            {!cancellationPending ? (
+                              <button onClick={() => { setEditingAppointmentId(appointment.id); setEditDraft({ service: (appointment.serviceId ?? SERVICES.find((service) => service.name === appointment.service)?.id ?? null) as ServiceId | null, notes: appointment.notes || "" }); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Edit</button>
+                            ) : null}
+                            {!cancellationPending ? (
+                              <button onClick={() => { setRescheduleAppointmentId(appointment.id); setRescheduleServiceId(appointment.serviceId ?? SERVICES.find((service) => service.name === appointment.service)?.id ?? null); setRescheduleDate(appointmentBusinessDate(appointment.dateTime)); setRescheduleTime(null); }} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold">Reschedule</button>
+                            ) : null}
                             {appointment.review ? (
                               <span className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">Review submitted</span>
                             ) : (
