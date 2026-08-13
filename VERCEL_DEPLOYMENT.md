@@ -96,6 +96,11 @@ intentional: the frontend does not use Prisma, so its Vercel build must not
 install the separate backend workspace. Prisma Client generation remains in
 the backend project's `postinstall` and `vercel-build` commands.
 
+Both Vercel install commands set `PRISMA_SKIP_POSTINSTALL_GENERATE=true` to
+prevent Prisma Client from trying to generate before pnpm finishes linking the
+workspace. The backend then runs the explicit `prisma generate` command from
+its own `postinstall` and `vercel-build` scripts.
+
 ## 4. Configure Stripe
 
 Create a production webhook endpoint in Stripe:
