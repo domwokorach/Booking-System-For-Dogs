@@ -38,6 +38,7 @@ import {
 } from "date-fns";
 import { io } from "socket.io-client";
 import { getStatusStyles } from "./lib/booking-status";
+import { TermsAndConditions } from "./pages/TermsAndConditions";
 import {
   BUSINESS_TIME_ZONE,
   formatSlotLabel,
@@ -46,7 +47,7 @@ import {
 
 type ServiceId = "grooming" | "training" | "daycare" | "boarding";
 type AuthMode = "login" | "register";
-type CurrentView = "home" | "login" | "register" | "forgot-password" | "reset-password" | "dashboard" | "cancel-appointment-confirm" | "delete-appointment-confirm" | "delete-account-confirm" | "delete-account-cancel";
+type CurrentView = "home" | "login" | "register" | "forgot-password" | "reset-password" | "dashboard" | "terms" | "cancel-appointment-confirm" | "delete-appointment-confirm" | "delete-account-confirm" | "delete-account-cancel";
 type HomeSection = "services" | "booking" | "about";
 
 interface BookingState {
@@ -601,6 +602,7 @@ export default function BookingApp() {
     const searchParams = new URLSearchParams(window.location.search);
     const initialSection = homeSectionFromHash(window.location.hash);
     const isPasswordResetPath = /\/reset-password\/?$/.test(window.location.pathname);
+    const isTermsPath = /\/terms-and-conditions\/?$/.test(window.location.pathname);
     const initialPasswordResetToken = isPasswordResetPath
       ? searchParams.get("token")
       : null;
@@ -646,7 +648,10 @@ export default function BookingApp() {
         setFeedback("This password reset link is invalid or incomplete.");
       }
     }
-    if (!deletionActionView && !isPasswordResetPath && initialSection) {
+    if (!deletionActionView && !isPasswordResetPath && isTermsPath) {
+      setCurrentView("terms");
+    }
+    if (!deletionActionView && !isPasswordResetPath && !isTermsPath && initialSection) {
       setCurrentView("home");
       setSectionTarget(initialSection);
     }
@@ -659,7 +664,7 @@ export default function BookingApp() {
 
     setUser(savedSession.user);
     setToken(savedSession.token);
-    if (!deletionActionView && !isPasswordResetPath && !initialSection) {
+    if (!deletionActionView && !isPasswordResetPath && !isTermsPath && !initialSection) {
       setCurrentView("dashboard");
     }
   }, []);
@@ -719,6 +724,26 @@ export default function BookingApp() {
 
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
+  useEffect(() => {
+    function handlePopState() {
+      if (/\/terms-and-conditions\/?$/.test(window.location.pathname)) {
+        setCurrentView("terms");
+        setMenuOpen(false);
+        return;
+      }
+
+      if (window.location.pathname === "/") {
+        const section = homeSectionFromHash(window.location.hash);
+        setCurrentView("home");
+        setMenuOpen(false);
+        setSectionTarget(section);
+      }
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
   useEffect(() => {
@@ -1722,7 +1747,7 @@ export default function BookingApp() {
   }
 
   function navigateToSection(section: HomeSection) {
-    const nextUrl = `${window.location.pathname}${window.location.search}#${section}`;
+    const nextUrl = `/#${section}`;
     window.history.pushState({}, "", nextUrl);
     setCurrentView("home");
     setMenuOpen(false);
@@ -1733,11 +1758,24 @@ export default function BookingApp() {
     navigateToSection("booking");
   }
 
+  function navigateHome() {
+    window.history.pushState({}, "", "/");
+    setCurrentView("home");
+    setMenuOpen(false);
+    setSectionTarget(null);
+  }
+
+  function navigateToTerms() {
+    window.history.pushState({}, "", "/terms-and-conditions");
+    setCurrentView("terms");
+    setMenuOpen(false);
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground font-sans">
       <nav className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-md border-b border-border">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <button className="flex items-center gap-2.5" onClick={() => setCurrentView("home")}>
+          <button className="flex items-center gap-2.5" onClick={navigateHome}>
             <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center shrink-0">
               <span className="text-white text-xs font-bold">P</span>
             </div>
@@ -1784,7 +1822,9 @@ export default function BookingApp() {
       </nav>
 
       <div className="pt-16">
-        {currentView === "cancel-appointment-confirm" ? (
+        {currentView === "terms" ? (
+          <TermsAndConditions onNavigateHome={navigateHome} />
+        ) : currentView === "cancel-appointment-confirm" ? (
           <section className="min-h-[calc(100vh-4rem)] px-6 py-16 flex items-center justify-center">
             <div className={`w-full max-w-xl rounded-3xl border bg-card p-8 text-center shadow-sm ${appointmentCancellationCompleted ? "border-emerald-200" : "border-amber-200"}`}>
               <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full ${appointmentCancellationCompleted ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"}`}>
@@ -2687,6 +2727,21 @@ export default function BookingApp() {
                       <li className="flex items-center gap-2"><Phone size={14} className="shrink-0" />(503) 555-0142</li>
                     </ul>
                   </div>
+                </div>
+                <div className="flex flex-col items-center justify-between gap-4 border-t border-border pt-6 sm:flex-row">
+                  <p className="text-xs text-muted-foreground">
+                    © 2026 Pawside Dog Services. All rights reserved.
+                  </p>
+                  <a
+                    href="/terms-and-conditions"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      navigateToTerms();
+                    }}
+                    className="text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Terms and Conditions
+                  </a>
                 </div>
               </div>
             </footer>
