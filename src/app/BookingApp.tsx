@@ -1200,18 +1200,6 @@ export default function BookingApp() {
         throw new Error(data?.message || "Unable to submit your review.");
       }
 
-      setReviews((current) => [data, ...current.filter((review) => review.id !== data.id)].slice(0, 12));
-      setReviewStats((current) => ({
-        count: current.count + 1,
-        averageRating:
-          current.averageRating === null
-            ? data.rating
-            : Math.round(
-                ((current.averageRating * current.count + data.rating) /
-                  (current.count + 1)) *
-                  10,
-              ) / 10,
-      }));
       setAppointments((current) =>
         current.map((appointment) =>
           appointment.id === reviewingAppointmentId
