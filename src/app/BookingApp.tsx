@@ -2816,8 +2816,8 @@ export default function BookingApp() {
               </div>
             </section>
 
-            <section id="about" className="py-24 px-6 bg-[#1B2B1B]">
-              <div className="max-w-6xl mx-auto">
+            <section id="pawside-reviews" className="py-24 px-6 bg-[#1B2B1B]">
+              <div id="about" className="max-w-6xl mx-auto">
                 <div className="mb-14">
                   <p className="text-[#5A8B60] text-xs font-semibold tracking-[0.18em] uppercase mb-4">Real customer feedback</p>
                   <h2 className="text-4xl md:text-5xl font-bold font-serif text-white leading-tight">Reviews from Pawside Customers</h2>
@@ -2825,11 +2825,11 @@ export default function BookingApp() {
                   <dl className="mt-8 grid gap-3 sm:grid-cols-3" aria-label="Pawside customer review statistics">
                     <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-4">
                       <dt className="order-2 mt-2 text-sm leading-5 text-[#A8BFA9]">Genuine comments from Pawside customers</dt>
-                      <dd className="order-1 text-2xl font-bold font-serif text-white">{reviewStats.count} Customer {reviewStats.count === 1 ? "Review" : "Reviews"}</dd>
+                      <dd id="reviewCount" className="order-1 text-2xl font-bold font-serif text-white">{reviewStats.count} Customer {reviewStats.count === 1 ? "Review" : "Reviews"}</dd>
                     </div>
                     <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-4">
                       <dt className="order-2 mt-2 text-sm leading-5 text-[#A8BFA9]">Updated in real time based on customer ratings</dt>
-                      <dd className="order-1 text-2xl font-bold font-serif text-white">{reviewStats.averageRating === null ? "—" : reviewStats.averageRating.toFixed(1)} ★ Rating</dd>
+                      <dd id="averageRating" className="order-1 text-2xl font-bold font-serif text-white">{reviewStats.averageRating === null ? "—" : reviewStats.averageRating.toFixed(1)} ★ Rating</dd>
                     </div>
                     <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-4">
                       <dt className="order-2 mt-2 text-sm leading-5 text-[#A8BFA9]">The year Pawside started operating</dt>
@@ -2842,7 +2842,7 @@ export default function BookingApp() {
                     No customer reviews have been submitted yet. Completed appointments will offer customers the option to leave the first review.
                   </div>
                 ) : (
-                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div id="reviewsList" className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {reviews.map((review) => (
                       <article key={review.id} className="bg-white/[0.05] border border-white/10 rounded-2xl p-7 flex flex-col hover:bg-white/[0.08] transition-colors">
                         <div className="mb-5 flex items-center justify-between gap-3">
