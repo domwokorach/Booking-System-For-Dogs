@@ -55,6 +55,8 @@ model User {
   weatherAlertNotifications WeatherAlertNotification[]
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime                   @updatedAt
+  avatarUrl                 String?
+  avatarObjectKey           String?
 }
 
 model Service {

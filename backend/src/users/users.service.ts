@@ -218,6 +218,8 @@ export class UsersService {
           surname: body.surname,
           address: body.homeAddress,
           mobileNumber: body.mobileNumber,
+          avatarUrl: body.avatarUrl,
+          avatarObjectKey: body.avatarObjectKey,
         },
         select: {
           id: true,
@@ -228,6 +230,8 @@ export class UsersService {
           address: true,
           mobileNumber: true,
           updatedAt: true,
+          avatarUrl: true,
+          avatarObjectKey: true,
         },
       });
     } catch (error) {
