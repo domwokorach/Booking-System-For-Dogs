@@ -54,6 +54,7 @@ model User {
   mobileNumber              String
   passwordHash              String
   role                      UserRole                   @default(CUSTOMER)
+  isActive                  Boolean                    @default(true)
   appointments              Appointment[]
   reviews                   Review[]
   refreshTokens             RefreshToken[]

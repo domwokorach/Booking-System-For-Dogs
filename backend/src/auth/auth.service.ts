@@ -101,6 +101,13 @@ export class AuthService {
       );
     }
 
+    if (!user.isActive) {
+      throw new HttpException(
+        "Account is deactivated.",
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
     const token = this.authTokenService.signAccessToken(user);
     const refreshToken = this.authTokenService.signRefreshToken(user);
     await this.persistRefreshToken(user.id, refreshToken);
@@ -115,6 +122,7 @@ export class AuthService {
         address: user.address,
         mobileNumber: user.mobileNumber,
         role: user.role,
+        isActive: user.isActive,
       },
       token,
       accessToken: token,
