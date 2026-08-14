@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "postinstall": "pnpm run prisma:generate",
+    "postinstall": "test \"$PRISMA_SKIP_POSTINSTALL_GENERATE\" = \"true\" || pnpm run prisma:generate",
     "vercel-build": "pnpm run prisma:generate && pnpm run prisma:migrate:deploy && pnpm run build",
     "dev": "nest start --watch",
     "start:dev": "nest start --watch",
