@@ -9,6 +9,7 @@ import type { AuthUser } from "./auth.types.js";
 type TokenUser = {
   id: string;
   email: string;
+  role: 'CUSTOMER' | 'STAFF' | 'ADMIN';
 };
 
 type RefreshAuthUser = AuthUser & {
@@ -23,7 +24,7 @@ export class AuthTokenService {
     };
 
     return jwt.sign(
-      { userId: user.id, email: user.email },
+      { userId: user.id, email: user.email, role: user.role },
       env.JWT_ACCESS_SECRET,
       options,
     );
@@ -36,7 +37,7 @@ export class AuthTokenService {
     };
 
     return jwt.sign(
-      { userId: user.id, email: user.email, type: "refresh" },
+      { userId: user.id, email: user.email, role: user.role, type: "refresh" },
       env.JWT_REFRESH_SECRET,
       options,
     );
@@ -49,6 +50,7 @@ export class AuthTokenService {
       typeof payload !== "object" ||
       typeof payload.userId !== "string" ||
       typeof payload.email !== "string" ||
+      typeof payload.role !== "string" ||
       typeof payload.exp !== "number"
     ) {
       throw new Error("Invalid access token payload.");
@@ -58,6 +60,7 @@ export class AuthTokenService {
       id: payload.userId,
       userId: payload.userId,
       email: payload.email,
+      role: payload.role as 'CUSTOMER' | 'STAFF' | 'ADMIN',
       expiresAt: payload.exp * 1000,
     };
   }
@@ -69,6 +72,7 @@ export class AuthTokenService {
       typeof payload !== "object" ||
       typeof payload.userId !== "string" ||
       typeof payload.email !== "string" ||
+      typeof payload.role !== "string" ||
       typeof payload.exp !== "number" ||
       payload.type !== "refresh"
     ) {
@@ -79,6 +83,7 @@ export class AuthTokenService {
       id: payload.userId,
       userId: payload.userId,
       email: payload.email,
+      role: payload.role as 'CUSTOMER' | 'STAFF' | 'ADMIN',
       expiresAt: payload.exp * 1000,
       type: "refresh",
     };

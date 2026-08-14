@@ -15,6 +15,7 @@ import { SchedulingModule } from "./scheduling/scheduling.module.js";
 import { SlotsModule } from "./slots/slots.module.js";
 import { UsersModule } from "./users/users.module.js";
 import { WeatherModule } from "./weather/weather.module.js";
+import { AdminModule } from "./admin/admin.module.js";
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { WeatherModule } from "./weather/weather.module.js";
     NotificationsModule,
     PaymentsModule,
     WeatherModule,
+    AdminModule,
     SchedulingModule,
     AuthModule,
     RealtimeModule,

@@ -61,6 +61,7 @@ export class AuthService {
           email: true,
           address: true,
           mobileNumber: true,
+          role: true,
         },
       });
     } catch (error) {
@@ -113,6 +114,7 @@ export class AuthService {
         email: user.email,
         address: user.address,
         mobileNumber: user.mobileNumber,
+        role: user.role,
       },
       token,
       accessToken: token,
@@ -162,7 +164,7 @@ export class AuthService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, email: true },
+      select: { id: true, email: true, role: true },
     });
 
     if (!user) {
