@@ -1210,6 +1210,10 @@ export default function BookingApp() {
       closeReviewForm();
       await loadReviews();
       setFeedback("Thank you. Your review is now live on the website.");
+      const reviewsSection = document.getElementById("pawside-reviews");
+      if (reviewsSection) {
+        reviewsSection.scrollIntoView({ behavior: "smooth" });
+      }
       navigateToSection("about");
     } catch (error) {
       setFeedback((error as Error).message);
@@ -2366,7 +2370,7 @@ export default function BookingApp() {
                             <p className="mt-3 text-sm text-muted-foreground">A deletion request has been sent to Dominic for approval. The appointment will remain until it is approved and removed. You can resend the request to replace an expired link.</p>
                           ) : null}
                           {reviewingAppointmentId === appointment.id ? (
-                            <form className="mt-4 space-y-4 rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
+                            <form id="reviewForm" className="mt-4 space-y-4 rounded-2xl border border-amber-200 bg-amber-50/50 p-5" onSubmit={handleReviewSubmit}>
                               <div>
                                 <p className="text-sm font-semibold text-foreground">Rate your completed appointment</p>
                                 <div className="mt-2 flex gap-1" role="radiogroup" aria-label="Star rating">
@@ -2436,7 +2440,7 @@ export default function BookingApp() {
                                 />
                               </div>
                               <div className="flex flex-wrap gap-2">
-                                <button type="button" onClick={(event) => handleReviewSubmit(event as any)} disabled={loading} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+                                <button type="submit" disabled={loading} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60">
                                   {loading ? "Submitting review..." : "Submit Review"}
                                 </button>
                                 <button type="button" onClick={closeReviewForm} className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold">Cancel</button>
