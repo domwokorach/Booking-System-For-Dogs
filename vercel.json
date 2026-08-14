@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "installCommand": "PRISMA_SKIP_POSTINSTALL_GENERATE=true pnpm --filter '@figma/my-make-file...' install --frozen-lockfile",
+  "installCommand": "PRISMA_SKIP_POSTINSTALL_GENERATE=true pnpm --filter '@figma/my-make-file' install --frozen-lockfile",
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
   "rewrites": [
