@@ -786,15 +786,15 @@ export default function BookingApp() {
       return;
     }
 
-    const animationFrameId = window.requestAnimationFrame(() => {
+    const timeoutId = window.setTimeout(() => {
       document.getElementById(sectionTarget)?.scrollIntoView({
         behavior: "smooth",
         block: "start",
       });
       setSectionTarget(null);
-    });
+    }, 100);
 
-    return () => window.cancelAnimationFrame(animationFrameId);
+    return () => window.clearTimeout(timeoutId);
   }, [currentView, sectionTarget]);
 
   useEffect(() => {
@@ -1212,7 +1212,6 @@ export default function BookingApp() {
                   10,
               ) / 10,
       }));
-      void loadReviews();
       setAppointments((current) =>
         current.map((appointment) =>
           appointment.id === reviewingAppointmentId
