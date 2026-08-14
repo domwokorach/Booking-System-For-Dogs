@@ -1222,6 +1222,7 @@ export default function BookingApp() {
       );
       closeReviewForm();
       setFeedback("Thank you. Your review is now live on the website.");
+      navigateToSection("about");
     } catch (error) {
       setFeedback((error as Error).message);
     } finally {
