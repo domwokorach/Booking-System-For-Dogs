@@ -2839,7 +2839,7 @@ export default function BookingApp() {
                 </div>
                 {reviews.length === 0 ? (
                   <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-8 text-sm text-[#B8CEB9]">
-                    No customer reviews have been submitted yet. Completed appointments will offer customers the option to leave the first review.
+                    No customer reviews have been submitted yet. Customers can leave a review after completing an appointment.
                   </div>
                 ) : (
                   <div id="reviewsList" className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
