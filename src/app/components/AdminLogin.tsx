@@ -6,12 +6,28 @@ export function AdminLogin({ onLogin }: { onLogin: () => void }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real app, you would authenticate with the backend here.
-    // For now, we'll just simulate a successful admin login.
-    if (email === 'admin@pawside.co.uk') {
-        onLogin();
-    } else {
-        alert('Invalid credentials');
+    try {
+      const response = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        alert(errorData.message || 'Invalid credentials');
+        return;
+      }
+
+      const data = await response.json();
+      // Store tokens if needed for further admin requests
+      localStorage.setItem('accessToken', data.accessToken);
+      
+      onLogin();
+    } catch (error) {
+      alert('An error occurred during login');
     }
   };
 
