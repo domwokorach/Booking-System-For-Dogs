@@ -61,8 +61,8 @@ model User {
   accountDeletionRequest    AccountDeletionRequest?
   payments                  Payment[]
   weatherAlertNotifications WeatherAlertNotification[]
-  requests                  CustomerRequest[]
-  adminAuditLogs            AdminAuditLog[]
+  requests                  CustomerRequest[] @relation("CustomerRequests")
+  adminAuditLogs            AdminAuditLog[]   @relation("AdminAuditLogs")
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime                   @updatedAt
   avatarUrl                 String?
@@ -260,7 +260,7 @@ model WeatherAlertNotification {
 model CustomerRequest {
   id           String    @id @default(uuid())
   customerId   String
-  customer     User      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer     User      @relation(name: "CustomerRequests", fields: [customerId], references: [id], onDelete: Cascade)
   requestType  String    // CANCELLATION, ACCOUNT_DELETION, RESCHEDULE
   status       String    // PENDING, APPROVED, REJECTED
   requestedAt  DateTime  @default(now())
@@ -274,7 +274,7 @@ model CustomerRequest {
 model AdminAuditLog {
   id           String   @id @default(uuid())
   adminUserId  String
-  adminUser    User     @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  adminUser    User     @relation(name: "AdminAuditLogs", fields: [adminUserId], references: [id], onDelete: Cascade)
   action       String
   customerId   String?
   requestId    String?
