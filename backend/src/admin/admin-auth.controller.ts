@@ -11,7 +11,7 @@ export class AdminAuthController {
     const loginData = loginSchema.parse(body);
     const result = await this.authService.login(loginData);
     
-    if (result.user.role !== 'ADMIN' && result.user.role !== 'STAFF') {
+    if (!['ADMIN', 'STAFF'].includes(result.user.role)) {
       throw new HttpException('Access denied: Admin or Staff role required', HttpStatus.FORBIDDEN);
     }
     

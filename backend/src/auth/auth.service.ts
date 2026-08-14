@@ -357,15 +357,18 @@ export class AuthService {
     password: string,
     passwordHash: string,
   ): Promise<boolean> {
-    if (
-      passwordHash.startsWith("$2a$") ||
-      passwordHash.startsWith("$2b$") ||
-      passwordHash.startsWith("$2y$")
-    ) {
-      return bcrypt.compare(password, passwordHash);
+    try {
+      if (
+        passwordHash.startsWith("$2a$") ||
+        passwordHash.startsWith("$2b$") ||
+        passwordHash.startsWith("$2y$")
+      ) {
+        return await bcrypt.compare(password, passwordHash);
+      }
+      return await argon2.verify(passwordHash, password);
+    } catch (error) {
+      return false;
     }
-
-    return argon2.verify(passwordHash, password);
   }
 
   private hashResetToken(token: string): string {
