@@ -6,7 +6,7 @@ RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY backend/package.json ./backend/package.json
-RUN pnpm install --frozen-lockfile --ignore-scripts --filter @booking-system/backend...
+RUN pnpm install --no-frozen-lockfile --ignore-scripts --filter @booking-system/backend...
 
 COPY backend ./backend
 WORKDIR /app/backend
