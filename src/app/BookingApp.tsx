@@ -48,6 +48,10 @@ import { useLiveNetworkStatus } from "./lib/network-status";
 import { CookiePreferences } from "./pages/CookiePreferences";
 import { NetworkStatusPage } from "./pages/NetworkStatusPage";
 import { TermsAndConditions } from "./pages/TermsAndConditions";
+import { AdminLogin } from "./components/AdminLogin";
+import { AdminDashboard } from "./components/AdminDashboard";
+import { AdminCustomers } from "./components/AdminCustomers";
+import { AdminRequests } from "./components/AdminRequests";
 import {
   BUSINESS_TIME_ZONE,
   formatSlotLabel,
@@ -56,7 +60,7 @@ import {
 
 type ServiceId = "grooming" | "training" | "daycare" | "boarding";
 type AuthMode = "login" | "register";
-type CurrentView = "home" | "login" | "register" | "forgot-password" | "reset-password" | "dashboard" | "terms" | "cookie-preferences" | "network-status" | "not-found" | "cancel-appointment-confirm" | "delete-appointment-confirm" | "delete-account-confirm" | "delete-account-cancel";
+type CurrentView = "home" | "login" | "register" | "forgot-password" | "reset-password" | "dashboard" | "terms" | "cookie-preferences" | "network-status" | "not-found" | "cancel-appointment-confirm" | "delete-appointment-confirm" | "delete-account-confirm" | "delete-account-cancel" | "admin-login" | "admin-dashboard" | "admin-customers" | "admin-requests";
 type HomeSection = "services" | "booking" | "about";
 
 interface BookingState {
@@ -812,7 +816,27 @@ export default function BookingApp() {
   }, []);
 
   useEffect(() => {
-    function handlePopState() {
+    function handleRoute() {
+      if (/\/admin\/login\/?$/.test(window.location.pathname)) {
+        setCurrentView("admin-login");
+        setMenuOpen(false);
+        return;
+      }
+      if (/\/admin\/dashboard\/?$/.test(window.location.pathname)) {
+        setCurrentView("admin-dashboard");
+        setMenuOpen(false);
+        return;
+      }
+      if (/\/admin\/customers\/?$/.test(window.location.pathname)) {
+        setCurrentView("admin-customers");
+        setMenuOpen(false);
+        return;
+      }
+      if (/\/admin\/requests\/?$/.test(window.location.pathname)) {
+        setCurrentView("admin-requests");
+        setMenuOpen(false);
+        return;
+      }
       if (/\/terms-and-conditions\/?$/.test(window.location.pathname)) {
         setCurrentView("terms");
         setMenuOpen(false);
@@ -843,8 +867,9 @@ export default function BookingApp() {
       setMenuOpen(false);
     }
 
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    handleRoute();
+    window.addEventListener("popstate", handleRoute);
+    return () => window.removeEventListener("popstate", handleRoute);
   }, []);
 
   useEffect(() => {
@@ -2237,6 +2262,14 @@ export default function BookingApp() {
               </div>
             </div>
           </section>
+        ) : currentView === "admin-login" ? (
+          <AdminLogin onLogin={() => { window.history.pushState(null, '', '/admin/dashboard'); setCurrentView("admin-dashboard"); }} />
+        ) : currentView === "admin-dashboard" ? (
+          <AdminDashboard />
+        ) : currentView === "admin-customers" ? (
+          <AdminCustomers />
+        ) : currentView === "admin-requests" ? (
+          <AdminRequests />
         ) : currentView === "dashboard" && user ? (
           <section className="min-w-0 px-4 py-12 sm:px-6 sm:py-16">
             <div className="mx-auto max-w-6xl space-y-8">
