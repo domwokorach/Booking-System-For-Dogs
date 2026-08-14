@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { supabase } from '@/lib/supabaseClient';
 
 export function AdminLogin({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState('');
@@ -7,23 +8,28 @@ export function AdminLogin({ onLogin }: { onLogin: () => void }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch('/api/admin/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        alert(errorData.message || 'Invalid credentials');
+      if (error) {
+        alert(error.message);
         return;
       }
 
-      const data = await response.json();
-      // Store tokens if needed for further admin requests
-      localStorage.setItem('accessToken', data.accessToken);
+      // Check role in profiles table
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profileError || !['ADMIN', 'STAFF'].includes(profile?.role)) {
+        alert('Access denied: Admin or Staff role required');
+        await supabase.auth.signOut();
+        return;
+      }
       
       onLogin();
     } catch (error) {
