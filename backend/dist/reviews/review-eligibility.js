@@ -7,6 +7,9 @@ export function getReviewEligibility(appointment, now = new Date()) {
         appointment.status === AppointmentStatus.CancellationPending) {
         return { canReview: false, reason: "CANCELLED", availableAt: null };
     }
+    if (appointment.status !== AppointmentStatus.Completed) {
+        return { canReview: false, reason: "NOT_FINISHED", availableAt: null };
+    }
     const availableAt = new Date(appointment.dateTime.getTime() + appointment.durationMinutes * 60_000);
     if (availableAt > now) {
         return { canReview: false, reason: "NOT_FINISHED", availableAt };

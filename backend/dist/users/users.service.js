@@ -176,6 +176,8 @@ let UsersService = class UsersService {
                     surname: body.surname,
                     address: body.homeAddress,
                     mobileNumber: body.mobileNumber,
+                    avatarUrl: body.avatarUrl,
+                    avatarObjectKey: body.avatarObjectKey,
                 },
                 select: {
                     id: true,
@@ -186,6 +188,8 @@ let UsersService = class UsersService {
                     address: true,
                     mobileNumber: true,
                     updatedAt: true,
+                    avatarUrl: true,
+                    avatarObjectKey: true,
                 },
             });
         }

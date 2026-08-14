@@ -56,6 +56,7 @@ let AuthService = class AuthService {
                     email: true,
                     address: true,
                     mobileNumber: true,
+                    role: true,
                 },
             });
         }
@@ -83,6 +84,9 @@ let AuthService = class AuthService {
         if (!user || !(await this.verifyPassword(body.password, user.passwordHash))) {
             throw new HttpException("Invalid email or password.", HttpStatus.UNAUTHORIZED);
         }
+        if (!user.isActive) {
+            throw new HttpException("Account is deactivated.", HttpStatus.UNAUTHORIZED);
+        }
         const token = this.authTokenService.signAccessToken(user);
         const refreshToken = this.authTokenService.signRefreshToken(user);
         await this.persistRefreshToken(user.id, refreshToken);
@@ -95,6 +99,8 @@ let AuthService = class AuthService {
                 email: user.email,
                 address: user.address,
                 mobileNumber: user.mobileNumber,
+                role: user.role,
+                isActive: user.isActive,
             },
             token,
             accessToken: token,
@@ -129,7 +135,7 @@ let AuthService = class AuthService {
         }
         const user = await this.prisma.user.findUnique({
             where: { id: payload.userId },
-            select: { id: true, email: true },
+            select: { id: true, email: true, role: true },
         });
         if (!user) {
             throw new HttpException("Invalid refresh token.", HttpStatus.UNAUTHORIZED);
@@ -266,12 +272,17 @@ let AuthService = class AuthService {
         });
     }
     async verifyPassword(password, passwordHash) {
-        if (passwordHash.startsWith("$2a$") ||
-            passwordHash.startsWith("$2b$") ||
-            passwordHash.startsWith("$2y$")) {
-            return bcrypt.compare(password, passwordHash);
+        try {
+            if (passwordHash.startsWith("$2a$") ||
+                passwordHash.startsWith("$2b$") ||
+                passwordHash.startsWith("$2y$")) {
+                return await bcrypt.compare(password, passwordHash);
+            }
+            return await argon2.verify(passwordHash, password);
         }
-        return argon2.verify(passwordHash, password);
+        catch (error) {
+            return false;
+        }
     }
     hashResetToken(token) {
         return createHash("sha256").update(token).digest("hex");

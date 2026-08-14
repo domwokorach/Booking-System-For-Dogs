@@ -4,6 +4,8 @@ export const updateProfileSchema = z.object({
     surname: z.string().min(1).optional(),
     homeAddress: z.string().min(1).optional(),
     mobileNumber: z.string().min(1).optional(),
+    avatarUrl: z.string().url().optional(),
+    avatarObjectKey: z.string().min(1).optional(),
 });
 export const changePasswordSchema = z.object({
     currentPassword: z.string().min(1),

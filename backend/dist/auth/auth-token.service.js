@@ -13,20 +13,21 @@ let AuthTokenService = class AuthTokenService {
         const options = {
             expiresIn: env.JWT_ACCESS_EXPIRES_IN,
         };
-        return jwt.sign({ userId: user.id, email: user.email }, env.JWT_ACCESS_SECRET, options);
+        return jwt.sign({ userId: user.id, email: user.email, role: user.role }, env.JWT_ACCESS_SECRET, options);
     }
     signRefreshToken(user) {
         const options = {
             expiresIn: env.JWT_REFRESH_EXPIRES_IN,
             jwtid: randomUUID(),
         };
-        return jwt.sign({ userId: user.id, email: user.email, type: "refresh" }, env.JWT_REFRESH_SECRET, options);
+        return jwt.sign({ userId: user.id, email: user.email, role: user.role, type: "refresh" }, env.JWT_REFRESH_SECRET, options);
     }
     verifyAccessToken(token) {
         const payload = jwt.verify(token, env.JWT_ACCESS_SECRET);
         if (typeof payload !== "object" ||
             typeof payload.userId !== "string" ||
             typeof payload.email !== "string" ||
+            typeof payload.role !== "string" ||
             typeof payload.exp !== "number") {
             throw new Error("Invalid access token payload.");
         }
@@ -34,6 +35,7 @@ let AuthTokenService = class AuthTokenService {
             id: payload.userId,
             userId: payload.userId,
             email: payload.email,
+            role: payload.role,
             expiresAt: payload.exp * 1000,
         };
     }
@@ -42,6 +44,7 @@ let AuthTokenService = class AuthTokenService {
         if (typeof payload !== "object" ||
             typeof payload.userId !== "string" ||
             typeof payload.email !== "string" ||
+            typeof payload.role !== "string" ||
             typeof payload.exp !== "number" ||
             payload.type !== "refresh") {
             throw new Error("Invalid refresh token payload.");
@@ -50,6 +53,7 @@ let AuthTokenService = class AuthTokenService {
             id: payload.userId,
             userId: payload.userId,
             email: payload.email,
+            role: payload.role,
             expiresAt: payload.exp * 1000,
             type: "refresh",
         };
