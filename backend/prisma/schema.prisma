@@ -13,6 +13,7 @@ enum AppointmentStatus {
   Rescheduled         @map("RESCHEDULED")
   CancellationPending @map("CANCELLATION_PENDING")
   Cancelled           @map("CANCELLED")
+  Completed           @map("COMPLETED")
 }
 
 enum AppointmentCancellationRequestStatus {
