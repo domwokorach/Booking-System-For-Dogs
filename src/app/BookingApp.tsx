@@ -792,7 +792,7 @@ export default function BookingApp() {
         block: "start",
       });
       setSectionTarget(null);
-    }, 100);
+    }, 500);
 
     return () => window.clearTimeout(timeoutId);
   }, [currentView, sectionTarget]);
@@ -1220,6 +1220,7 @@ export default function BookingApp() {
         ),
       );
       closeReviewForm();
+      await loadReviews();
       setFeedback("Thank you. Your review is now live on the website.");
       navigateToSection("about");
     } catch (error) {
