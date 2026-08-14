@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nestjs",
-  "installCommand": "PRISMA_SKIP_POSTINSTALL_GENERATE=true pnpm install --frozen-lockfile",
+  "installCommand": "PRISMA_SKIP_POSTINSTALL_GENERATE=true pnpm install --no-frozen-lockfile",
   "buildCommand": "pnpm run vercel-build"
 }
