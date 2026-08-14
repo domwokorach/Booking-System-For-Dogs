@@ -1138,8 +1138,8 @@ export default function BookingApp() {
   async function loadReviews() {
     try {
       const [reviewsResponse, statsResponse] = await Promise.all([
-        fetch(`${API_URL}/api/reviews`),
-        fetch(`${API_URL}/api/reviews/stats`),
+        fetch(`${API_URL}/api/reviews?t=${Date.now()}`),
+        fetch(`${API_URL}/api/reviews/stats?t=${Date.now()}`),
       ]);
       if (!reviewsResponse.ok || !statsResponse.ok) {
         throw new Error("Unable to load reviews.");
