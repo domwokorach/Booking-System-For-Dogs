@@ -1,6 +1,7 @@
 packages:
   - '.'
   - 'backend'
+  - 'api'
 supportedArchitectures:
   os:
     - linux

@@ -8,7 +8,7 @@
     "vercel-build": "pnpm run prisma:generate && pnpm run prisma:migrate:deploy && pnpm run build",
     "dev": "nest start --watch",
     "start:dev": "nest start --watch",
-    "build": "tsc -p tsconfig.json",
+    "build": "./node_modules/.bin/tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate --schema=prisma/schema.prisma",

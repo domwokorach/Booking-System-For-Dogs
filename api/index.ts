@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from '../backend/src/app.module';
-import { configureNestApplication } from '../backend/src/bootstrap';
+import { AppModule } from '../backend/src/app.module.js';
+import { configureNestApplication } from '../backend/src/bootstrap.js';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import serverlessExpress from '@vendia/serverless-express';
 import express from 'express';

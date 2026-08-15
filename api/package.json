@@ -1,0 +1,14 @@
+{
+  "name": "@booking-system/api",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.ts",
+  "dependencies": {
+    "@booking-system/backend": "workspace:*",
+    "@nestjs/common": "^11.1.28",
+    "@nestjs/core": "^11.1.28",
+    "@nestjs/platform-express": "^11.1.28",
+    "@vendia/serverless-express": "^4.12.6",
+    "express": "^4.21.2"
+  }
+}
