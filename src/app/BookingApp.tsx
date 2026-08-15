@@ -163,11 +163,11 @@ function isCancellationPendingStatus(status: string): boolean {
   return status.replaceAll("_", "").toLowerCase() === "cancellationpending";
 }
 
-const API_URL = (import.meta.env.VITE_API_URL?.trim() || "").replace(/\/+$/, "");
+const API_URL = (import.meta.env.VITE_API_URL?.trim() || (import.meta.env.DEV ? "http://localhost:3000" : "/api")).replace(/\/+$/, "");
 const SOCKET_BASE =
   import.meta.env.VITE_SOCKET_URL?.trim() ||
   API_URL ||
-  (import.meta.env.DEV ? "http://localhost:3000" : "");
+  (import.meta.env.DEV ? "http://localhost:3000" : "/api");
 const SESSION_STORAGE_KEY = "pawside-session";
 const LAST_ACTIVITY_STORAGE_KEY = "pawside-last-activity";
 const SESSION_UPDATED_EVENT = "pawside-session-updated";
