@@ -9,7 +9,12 @@ async function bootstrap() {
         rawBody: true,
     });
     configureNestApplication(app);
-    await app.listen(env.PORT, "0.0.0.0");
-    Logger.log(`Backend API listening on port ${env.PORT}`, "Bootstrap");
+    if (!process.env.VERCEL) {
+        await app.listen(env.PORT, "0.0.0.0");
+        Logger.log(`Backend API listening on port ${env.PORT}`, "Bootstrap");
+    }
+    else {
+        await app.init();
+    }
 }
 void bootstrap();

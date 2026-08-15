@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 import { Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ROLES_KEY } from './roles.decorator';
+import { ROLES_KEY } from './roles.decorator.js';
 let RolesGuard = class RolesGuard {
     reflector;
     constructor(reflector) {

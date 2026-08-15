@@ -1,13 +1,13 @@
-import { AppointmentStatus } from "@prisma/client";
+import { $Enums } from "@prisma/client";
 export function getReviewEligibility(appointment, now = new Date()) {
     if (appointment.hasReview) {
         return { canReview: false, reason: "ALREADY_REVIEWED", availableAt: null };
     }
-    if (appointment.status === AppointmentStatus.Cancelled ||
-        appointment.status === AppointmentStatus.CancellationPending) {
+    if (appointment.status === $Enums.AppointmentStatus.Cancelled ||
+        appointment.status === $Enums.AppointmentStatus.CancellationPending) {
         return { canReview: false, reason: "CANCELLED", availableAt: null };
     }
-    if (appointment.status !== AppointmentStatus.Completed) {
+    if (appointment.status !== $Enums.AppointmentStatus.Completed) {
         return { canReview: false, reason: "NOT_FINISHED", availableAt: null };
     }
     const availableAt = new Date(appointment.dateTime.getTime() + appointment.durationMinutes * 60_000);

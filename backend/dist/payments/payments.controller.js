@@ -28,8 +28,8 @@ let PaymentsController = class PaymentsController {
     getSessionStatus(user, sessionId) {
         return this.payments.getSessionStatus(user, sessionId);
     }
-    cancelPendingPayment(user, appointmentId) {
-        return this.payments.cancelPendingPayment(user, appointmentId);
+    async cancelPendingPayment(user, appointmentId) {
+        return await this.payments.cancelPendingPayment(user, appointmentId);
     }
 };
 __decorate([
@@ -61,13 +61,13 @@ __decorate([
 ], PaymentsController.prototype, "getSessionStatus", null);
 __decorate([
     Post("appointments/:appointmentId/cancel"),
-    UseGuards(JwtAuthGuard),
     HttpCode(HttpStatus.OK),
+    UseGuards(JwtAuthGuard),
     __param(0, CurrentUser()),
     __param(1, Param("appointmentId")),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object, String]),
-    __metadata("design:returntype", void 0)
+    __metadata("design:returntype", Promise)
 ], PaymentsController.prototype, "cancelPendingPayment", null);
 PaymentsController = __decorate([
     Controller("api/payments"),
