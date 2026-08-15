@@ -54,6 +54,6 @@
     "@types/multer": "^2.2.0",
     "@types/node": "^22.18.1",
     "@types/nodemailer": "^8.0.1",
-    "typescript": "^5.9.2"
+    "typescript": "5.3.3"
   }
 }
