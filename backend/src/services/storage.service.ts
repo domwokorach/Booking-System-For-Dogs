@@ -102,7 +102,7 @@ export async function uploadFileToCloud(input: {
       ContentType: input.mimeType,
     });
 
-    await s3Client.send(put);
+    await (s3Client as any).send(put);
 
     const signedUrl = await getSignedUrl(
       s3Client,

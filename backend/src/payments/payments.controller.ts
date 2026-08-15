@@ -49,12 +49,12 @@ export class PaymentsController {
   }
 
   @Post("appointments/:appointmentId/cancel")
-  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  cancelPendingPayment(
+  @UseGuards(JwtAuthGuard)
+  async cancelPendingPayment(
     @CurrentUser() user: AuthUser,
     @Param("appointmentId") appointmentId: string,
   ) {
-    return this.payments.cancelPendingPayment(user, appointmentId);
+    return await this.payments.cancelPendingPayment(user, appointmentId);
   }
 }

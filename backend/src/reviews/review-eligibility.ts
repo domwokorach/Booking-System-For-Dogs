@@ -1,4 +1,4 @@
-import { AppointmentStatus } from "@prisma/client";
+import { $Enums } from "@prisma/client";
 
 export type ReviewEligibility = {
   canReview: boolean;
@@ -8,7 +8,7 @@ export type ReviewEligibility = {
 
 export function getReviewEligibility(
   appointment: {
-    status: AppointmentStatus;
+    status: $Enums.AppointmentStatus;
     dateTime: Date;
     durationMinutes: number;
     hasReview: boolean;
@@ -20,13 +20,13 @@ export function getReviewEligibility(
   }
 
   if (
-    appointment.status === AppointmentStatus.Cancelled ||
-    appointment.status === AppointmentStatus.CancellationPending
+    appointment.status === $Enums.AppointmentStatus.Cancelled ||
+    appointment.status === $Enums.AppointmentStatus.CancellationPending
   ) {
     return { canReview: false, reason: "CANCELLED", availableAt: null };
   }
 
-  if (appointment.status !== AppointmentStatus.Completed) {
+  if (appointment.status !== $Enums.AppointmentStatus.Completed) {
     return { canReview: false, reason: "NOT_FINISHED", availableAt: null };
   }
 

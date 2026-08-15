@@ -1,5 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
-import type { AppointmentStatus } from "@prisma/client";
+import { $Enums } from "@prisma/client";
 
 import { env } from "../config/env.js";
 
@@ -23,7 +23,7 @@ export function parseSlotId(slotId: string): {
   return { serviceId, dateTime };
 }
 
-export function toApiStatus(status: AppointmentStatus): string {
+export function toApiStatus(status: $Enums.AppointmentStatus): string {
   return status.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
 }
 
@@ -54,7 +54,7 @@ export function formatTime(value: Date): string {
 export function toBookingDto(appointment: {
   id: string;
   dateTime: Date;
-  status: AppointmentStatus;
+  status: $Enums.AppointmentStatus;
   service: string | null;
   serviceRef?: { name: string } | null;
   notes: string | null;
@@ -77,7 +77,7 @@ export function toBookingMutationResponse(
   appointment: {
     id: string;
     dateTime: Date;
-    status: AppointmentStatus;
+    status: $Enums.AppointmentStatus;
   },
   message: string,
 ) {
