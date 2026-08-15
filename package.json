@@ -77,7 +77,8 @@
     "jest": "29.7.0",
     "tailwindcss": "4.1.12",
     "ts-jest": "29.4.12",
-    "vite": "6.3.5"
+    "vite": "6.3.5",
+    "dotenv": "16.4.7"
   },
   "peerDependencies": {
     "react": "18.3.1",

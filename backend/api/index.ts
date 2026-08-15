@@ -1,7 +1,7 @@
 import { NestFactory } from "@nestjs/core";
-import { ExpressAdapter } from "@nestjs/platform-express";
+import { ExpressAdapter, type NestExpressApplication } from "@nestjs/platform-express";
 import express from "express";
-import serverlessExpress from "@vendia/serverless-express";
+import { configure as serverlessExpress } from "@vendia/serverless-express";
 import { AppModule } from "../src/app.module.js";
 import { configureNestApplication } from "../src/bootstrap.js";
 
@@ -9,7 +9,7 @@ const expressApp = express();
 const adapter = new ExpressAdapter(expressApp);
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, adapter, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, adapter, { rawBody: true });
   configureNestApplication(app);
   await app.init();
   return app;
