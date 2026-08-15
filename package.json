@@ -74,7 +74,8 @@
     "@nestjs/common": "^11.1.28",
     "@nestjs/core": "^11.1.28",
     "@nestjs/platform-express": "^11.1.28",
-    "@vendia/serverless-express": "^4.12.6"
+    "@vendia/serverless-express": "^4.12.6",
+    "express": "^4.21.2"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.12",
@@ -85,7 +86,7 @@
     "ts-jest": "29.4.12",
     "vite": "6.3.5",
     "dotenv": "16.4.7",
-    "typescript": "5.9.2",
+    "typescript": "5.3.3",
     "ts-node": "10.9.2"
   },
   "peerDependencies": {
