@@ -61,32 +61,48 @@ export function AdminDashboard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await adminFetch('/api/admin/bookings');
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+      const data = (await response.json()) as Booking[];
+      setBookings(data);
+    } catch {
+      setError('Unable to load bookings.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await adminFetch('/api/admin/bookings');
-        if (!response.ok) {
-          throw new Error(`Request failed with status ${response.status}`);
-        }
-        const data = (await response.json()) as Booking[];
-        if (!cancelled) setBookings(data);
-      } catch {
-        if (!cancelled) setError('Unable to load bookings.');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
     void load();
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  async function approveCancellation(bookingId: string) {
+    setApprovingId(bookingId);
+    setActionError(null);
+    try {
+      const response = await adminFetch(`/api/admin/bookings/${bookingId}/approve-cancellation`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message ?? `Request failed with status ${response.status}`);
+      }
+      await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Unable to approve cancellation.');
+    } finally {
+      setApprovingId(null);
+    }
+  }
 
   return (
     <div className="p-8">
@@ -100,6 +116,7 @@ export function AdminDashboard() {
 
         {loading && <p className="px-6 pb-6 text-muted-foreground">Loading bookings…</p>}
         {error && <p className="px-6 pb-6 text-destructive">{error}</p>}
+        {actionError && <p className="px-6 pb-2 text-destructive">{actionError}</p>}
 
         {!loading && !error && (
           <div className="overflow-x-auto">
@@ -112,12 +129,13 @@ export function AdminDashboard() {
                   <th className="px-6 py-3 font-medium">Booking Status</th>
                   <th className="px-6 py-3 font-medium">Payment Status</th>
                   <th className="px-6 py-3 font-medium">Amount</th>
+                  <th className="px-6 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {bookings.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-6 text-center text-muted-foreground">
+                    <td colSpan={7} className="px-6 py-6 text-center text-muted-foreground">
                       No bookings yet.
                     </td>
                   </tr>
@@ -146,6 +164,20 @@ export function AdminDashboard() {
                       )}
                     </td>
                     <td className="px-6 py-3">{formatMoney(booking.amountPence, booking.currency)}</td>
+                    <td className="px-6 py-3">
+                      {booking.bookingStatus === 'CancellationPending' ? (
+                        <button
+                          type="button"
+                          disabled={approvingId === booking.id}
+                          onClick={() => void approveCancellation(booking.id)}
+                          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                        >
+                          {approvingId === booking.id ? 'Approving…' : 'Approve Cancellation'}
+                        </button>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

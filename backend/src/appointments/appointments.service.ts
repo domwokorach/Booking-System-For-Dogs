@@ -64,7 +64,7 @@ export class AppointmentsService {
 
   async listMine(user: AuthUser) {
     const appointments = await this.prisma.appointment.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, status: { not: AppointmentStatus.Cancelled } },
       include: {
         review: { select: { id: true } },
         payments: {

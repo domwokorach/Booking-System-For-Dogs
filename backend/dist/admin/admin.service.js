@@ -8,17 +8,71 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 import { Injectable } from '@nestjs/common';
+import { AppointmentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { PaymentsService } from '../payments/payments.service.js';
 let AdminService = class AdminService {
     prisma;
-    constructor(prisma) {
+    payments;
+    constructor(prisma, payments) {
         this.prisma = prisma;
+        this.payments = payments;
     }
     async getCustomers() {
         // Implement fetching customers
         return this.prisma.user.findMany({
             where: { role: 'CUSTOMER' },
         });
+    }
+    async getBookings() {
+        const appointments = await this.prisma.appointment.findMany({
+            where: { status: { not: AppointmentStatus.Cancelled } },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        surname: true,
+                        email: true,
+                        customerReference: true,
+                    },
+                },
+                serviceRef: { select: { id: true, name: true } },
+                payments: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                    select: {
+                        status: true,
+                        amountPence: true,
+                        currency: true,
+                        paidAt: true,
+                    },
+                },
+            },
+            orderBy: { dateTime: 'desc' },
+        });
+        return appointments.map((appointment) => {
+            const latestPayment = appointment.payments[0] ?? null;
+            return {
+                id: appointment.id,
+                dateTime: appointment.dateTime,
+                bookingStatus: appointment.status,
+                customer: {
+                    id: appointment.user.id,
+                    name: `${appointment.user.firstName} ${appointment.user.surname}`,
+                    email: appointment.user.email,
+                    customerReference: appointment.user.customerReference,
+                },
+                service: appointment.serviceRef?.name ?? appointment.service ?? null,
+                paymentStatus: latestPayment?.status ?? null,
+                amountPence: latestPayment?.amountPence ?? null,
+                currency: latestPayment?.currency ?? null,
+                paidAt: latestPayment?.paidAt ?? null,
+            };
+        });
+    }
+    async approveCancellation(appointmentId) {
+        return this.payments.adminApproveCancellation(appointmentId);
     }
     async approveRequest(requestId) {
         // Implement approving request
@@ -30,6 +84,7 @@ let AdminService = class AdminService {
 };
 AdminService = __decorate([
     Injectable(),
-    __metadata("design:paramtypes", [PrismaService])
+    __metadata("design:paramtypes", [PrismaService,
+        PaymentsService])
 ], AdminService);
 export { AdminService };

@@ -23,6 +23,12 @@ let AdminController = class AdminController {
     async getCustomers() {
         return this.adminService.getCustomers();
     }
+    async getBookings() {
+        return this.adminService.getBookings();
+    }
+    async approveCancellation(appointmentId) {
+        return this.adminService.approveCancellation(appointmentId);
+    }
     async approveRequest(id) {
         return this.adminService.approveRequest(id);
     }
@@ -35,6 +41,21 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AdminController.prototype, "getCustomers", null);
 __decorate([
+    Get('bookings'),
+    Roles('ADMIN', 'STAFF'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], AdminController.prototype, "getBookings", null);
+__decorate([
+    Post('bookings/:appointmentId/approve-cancellation'),
+    Roles('ADMIN', 'STAFF'),
+    __param(0, Param('appointmentId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], AdminController.prototype, "approveCancellation", null);
+__decorate([
     Post('requests/:id/approve'),
     Roles('ADMIN', 'STAFF'),
     __param(0, Param('id')),
@@ -43,7 +64,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AdminController.prototype, "approveRequest", null);
 AdminController = __decorate([
-    Controller('admin'),
+    Controller('api/admin'),
     UseGuards(JwtAuthGuard, RolesGuard),
     __metadata("design:paramtypes", [AdminService])
 ], AdminController);

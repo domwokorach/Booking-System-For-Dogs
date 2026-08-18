@@ -35,7 +35,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AdminAuthController.prototype, "login", null);
 AdminAuthController = __decorate([
-    Controller('admin'),
+    Controller('api/admin'),
     __metadata("design:paramtypes", [AuthService])
 ], AdminAuthController);
 export { AdminAuthController };

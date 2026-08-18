@@ -21,6 +21,12 @@ export class AdminController {
     return this.adminService.getBookings();
   }
 
+  @Post('bookings/:appointmentId/approve-cancellation')
+  @Roles('ADMIN', 'STAFF')
+  async approveCancellation(@Param('appointmentId') appointmentId: string) {
+    return this.adminService.approveCancellation(appointmentId);
+  }
+
   @Post('requests/:id/approve')
   @Roles('ADMIN', 'STAFF')
   async approveRequest(@Param('id') id: string) {

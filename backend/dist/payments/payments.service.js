@@ -359,17 +359,8 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
     async approveCancellation(token) {
         const tokenHash = createHash("sha256").update(token).digest("hex");
         const staleProcessingBefore = new Date(Date.now() - APPROVAL_PROCESSING_TIMEOUT_MS);
-        const request = await this.prisma.appointmentCancellationRequest.findUnique({
-            where: { tokenHash },
-            include: {
-                appointment: {
-                    include: {
-                        user: true,
-                        serviceRef: true,
-                        payments: { orderBy: { createdAt: "desc" }, take: 1 },
-                    },
-                },
-            },
+        const request = await this.findCancellationRequestForApproval({
+            tokenHash,
         });
         if (!request ||
             (request.status !== AppointmentCancellationRequestStatus.PENDING &&
@@ -397,6 +388,53 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         if (claimed.count !== 1) {
             throw new ConflictException("This cancellation request is already being processed.");
         }
+        return this.finalizeCancellationApproval(request);
+    }
+    async adminApproveCancellation(appointmentId) {
+        const staleProcessingBefore = new Date(Date.now() - APPROVAL_PROCESSING_TIMEOUT_MS);
+        const request = await this.findCancellationRequestForApproval({
+            appointmentId,
+        });
+        if (!request ||
+            (request.status !== AppointmentCancellationRequestStatus.PENDING &&
+                !(request.status === AppointmentCancellationRequestStatus.PROCESSING &&
+                    request.updatedAt <= staleProcessingBefore)) ||
+            request.appointment.status !== AppointmentStatus.CancellationPending) {
+            throw new BadRequestException("No pending cancellation request found for this booking.");
+        }
+        const claimed = await this.prisma.appointmentCancellationRequest.updateMany({
+            where: {
+                id: request.id,
+                OR: [
+                    { status: AppointmentCancellationRequestStatus.PENDING },
+                    {
+                        status: AppointmentCancellationRequestStatus.PROCESSING,
+                        updatedAt: { lte: staleProcessingBefore },
+                    },
+                ],
+            },
+            data: { status: AppointmentCancellationRequestStatus.PROCESSING },
+        });
+        if (claimed.count !== 1) {
+            throw new ConflictException("This cancellation request is already being processed.");
+        }
+        return this.finalizeCancellationApproval(request);
+    }
+    findCancellationRequestForApproval(where) {
+        return this.prisma.appointmentCancellationRequest.findUnique({
+            where,
+            include: {
+                appointment: {
+                    include: {
+                        user: true,
+                        serviceRef: true,
+                        payments: { orderBy: { createdAt: "desc" }, take: 1 },
+                    },
+                },
+            },
+        });
+    }
+    async finalizeCancellationApproval(request) {
         try {
             const refund = await this.processApprovedRefund(request.appointmentId, request.id);
             if (refund) {

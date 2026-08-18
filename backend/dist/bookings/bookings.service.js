@@ -103,7 +103,7 @@ let BookingsService = class BookingsService {
     }
     async listMine(user) {
         const appointments = await this.prisma.appointment.findMany({
-            where: { userId: user.id },
+            where: { userId: user.id, status: { not: AppointmentStatus.Cancelled } },
             orderBy: { dateTime: "asc" },
             include: { serviceRef: { select: { name: true } } },
         });

@@ -1,9 +1,14 @@
 import { Injectable } from '@nestjs/common';
+import { AppointmentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { PaymentsService } from '../payments/payments.service.js';
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly payments: PaymentsService,
+  ) {}
 
   async getCustomers() {
     // Implement fetching customers
@@ -14,6 +19,7 @@ export class AdminService {
 
   async getBookings() {
     const appointments = await this.prisma.appointment.findMany({
+      where: { status: { not: AppointmentStatus.Cancelled } },
       include: {
         user: {
           select: {
@@ -58,6 +64,10 @@ export class AdminService {
         paidAt: latestPayment?.paidAt ?? null,
       };
     });
+  }
+
+  async approveCancellation(appointmentId: string) {
+    return this.payments.adminApproveCancellation(appointmentId);
   }
 
   async approveRequest(requestId: string) {
