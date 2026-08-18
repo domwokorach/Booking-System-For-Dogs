@@ -12,7 +12,7 @@ async function getApp(): Promise<Express> {
     const app = await NestFactory.create<NestExpressApplication>(
       AppModule,
       new ExpressAdapter(expressApp),
-      { bodyParser: false },
+      { bodyParser: false, rawBody: true },
     );
     configureNestApplication(app);
     await app.init();
