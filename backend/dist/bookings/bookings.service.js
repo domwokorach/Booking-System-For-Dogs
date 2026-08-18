@@ -139,7 +139,7 @@ let BookingsService = class BookingsService {
                     date: query.date,
                     time: formatTime(startAt),
                     startAt: isoDateTime,
-                    endAt: new Date(startAt.getTime() + service.durationMinutes * 60_000).toISOString(),
+                    endAt: new Date(startAt.getTime() + service.durationMinutes * 60000).toISOString(),
                     active: true,
                 };
             }),

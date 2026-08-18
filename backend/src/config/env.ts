@@ -7,7 +7,7 @@ const rawEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().default(3000),
   DATABASE_URL: z.string().min(1),
-  CLIENT_ORIGIN: z.string().url().optional(),
+  CLIENT_ORIGIN: z.string().optional(),
   JWT_SECRET: z.string().min(32).optional(),
   JWT_EXPIRES_IN: z.string().default("7d"),
   JWT_ACCESS_SECRET: z.string().min(32).optional(),
@@ -55,9 +55,15 @@ if (!jwtAccessSecret || !jwtRefreshSecret) {
   );
 }
 
+const clientOrigins = (rawEnv.CLIENT_ORIGIN ?? rawEnv.FRONTEND_URL)
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 export const env = {
   ...rawEnv,
-  CLIENT_ORIGIN: rawEnv.CLIENT_ORIGIN ?? rawEnv.FRONTEND_URL,
+  CLIENT_ORIGIN: clientOrigins[0],
+  CLIENT_ORIGINS: clientOrigins,
   JWT_SECRET: rawEnv.JWT_SECRET ?? jwtAccessSecret,
   JWT_ACCESS_SECRET: jwtAccessSecret,
   JWT_REFRESH_SECRET: jwtRefreshSecret,

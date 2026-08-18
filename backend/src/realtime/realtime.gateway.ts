@@ -22,7 +22,7 @@ export function appointmentRoom(userId: string): string {
 
 @WebSocketGateway({
   cors: {
-    origin: env.CLIENT_ORIGIN,
+    origin: env.CLIENT_ORIGINS,
     methods: ["GET", "POST", "PATCH"],
     credentials: true,
   },

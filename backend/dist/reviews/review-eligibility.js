@@ -10,7 +10,7 @@ export function getReviewEligibility(appointment, now = new Date()) {
     if (appointment.status !== $Enums.AppointmentStatus.Completed) {
         return { canReview: false, reason: "NOT_FINISHED", availableAt: null };
     }
-    const availableAt = new Date(appointment.dateTime.getTime() + appointment.durationMinutes * 60_000);
+    const availableAt = new Date(appointment.dateTime.getTime() + appointment.durationMinutes * 60000);
     if (availableAt > now) {
         return { canReview: false, reason: "NOT_FINISHED", availableAt };
     }

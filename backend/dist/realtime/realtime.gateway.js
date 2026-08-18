@@ -36,7 +36,7 @@ let RealtimeGateway = class RealtimeGateway {
             client.emit("server:connected", {
                 message: "Realtime channel connected.",
             });
-            const expiryTimer = setTimeout(() => client.disconnect(true), Math.min(remainingLifetime, 2_147_483_647));
+            const expiryTimer = setTimeout(() => client.disconnect(true), Math.min(remainingLifetime, 2147483647));
             client.once("disconnect", () => clearTimeout(expiryTimer));
         }
         catch {
@@ -54,7 +54,7 @@ __decorate([
 RealtimeGateway = __decorate([
     WebSocketGateway({
         cors: {
-            origin: env.CLIENT_ORIGIN,
+            origin: env.CLIENT_ORIGINS,
             methods: ["GET", "POST", "PATCH"],
             credentials: true,
         },

@@ -15,7 +15,7 @@ import { EmailService } from "../notifications/email.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { evaluateWeatherSafety } from "./weather-policy.js";
 const WEATHER_STATE_ID = "pawside";
-const EMAIL_RETRY_DELAY_MS = 15 * 60_000;
+const EMAIL_RETRY_DELAY_MS = 15 * 60000;
 const ACTIVE_APPOINTMENT_STATUSES = [
     AppointmentStatus.Pending,
     AppointmentStatus.Confirmed,
@@ -87,7 +87,7 @@ let WeatherService = class WeatherService {
     }
     onModuleInit() {
         void this.refreshInBackground();
-        this.refreshTimer = setInterval(() => void this.refreshInBackground(), env.WEATHER_CACHE_MINUTES * 60_000);
+        this.refreshTimer = setInterval(() => void this.refreshInBackground(), env.WEATHER_CACHE_MINUTES * 60000);
         this.refreshTimer.unref();
     }
     onModuleDestroy() {
@@ -100,7 +100,7 @@ let WeatherService = class WeatherService {
         const cached = await this.prisma.weatherSafetyState.findUnique({
             where: { id: WEATHER_STATE_ID },
         });
-        const cacheLifetime = env.WEATHER_CACHE_MINUTES * 60_000;
+        const cacheLifetime = env.WEATHER_CACHE_MINUTES * 60000;
         if (!forceRefresh &&
             cached &&
             Date.now() - cached.checkedAt.getTime() < cacheLifetime) {
@@ -215,7 +215,7 @@ let WeatherService = class WeatherService {
         url.searchParams.set("appid", apiKey);
         const response = await fetch(url, {
             headers: { Accept: "application/json" },
-            signal: AbortSignal.timeout(8_000),
+            signal: AbortSignal.timeout(8000),
         });
         if (!response.ok) {
             throw new ServiceUnavailableException(`Weather provider returned status ${response.status}.`);

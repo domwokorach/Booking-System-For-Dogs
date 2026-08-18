@@ -7,7 +7,7 @@ export function configureNestApplication(app, options = {}) {
         prefix: "/uploads/",
     });
     app.enableCors({
-        origin: env.CLIENT_ORIGIN,
+        origin: env.CLIENT_ORIGINS,
         credentials: true,
     });
     app.useGlobalFilters(new ApiExceptionFilter());

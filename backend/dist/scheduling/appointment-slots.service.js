@@ -81,8 +81,8 @@ function getCoveredDateKeys(start, end) {
     return keys;
 }
 function overlaps(start, durationMinutes, existingStart, existingDurationMinutes) {
-    const end = start.getTime() + durationMinutes * 60_000;
-    const existingEnd = existingStart.getTime() + existingDurationMinutes * 60_000;
+    const end = start.getTime() + durationMinutes * 60000;
+    const existingEnd = existingStart.getTime() + existingDurationMinutes * 60000;
     return start.getTime() < existingEnd && end > existingStart.getTime();
 }
 let AppointmentSlotsService = class AppointmentSlotsService {
@@ -102,8 +102,8 @@ let AppointmentSlotsService = class AppointmentSlotsService {
         }
         const allSlots = BUSINESS_HOURS.map((hour) => createBusinessDateTime(dateKey, hour));
         const maximumDuration = await this.getMaximumDuration();
-        const scanStart = new Date(allSlots[0].getTime() - maximumDuration * 60_000);
-        const scanEnd = new Date(allSlots.at(-1).getTime() + durationMinutes * 60_000);
+        const scanStart = new Date(allSlots[0].getTime() - maximumDuration * 60000);
+        const scanEnd = new Date(allSlots.at(-1).getTime() + durationMinutes * 60000);
         const appointments = await this.prisma.appointment.findMany({
             where: {
                 id: excludeAppointmentId ? { not: excludeAppointmentId } : undefined,
@@ -133,8 +133,8 @@ let AppointmentSlotsService = class AppointmentSlotsService {
             where: {
                 id: excludeAppointmentId ? { not: excludeAppointmentId } : undefined,
                 dateTime: {
-                    gte: new Date(dateTime.getTime() - maximumDuration * 60_000),
-                    lt: new Date(dateTime.getTime() + durationMinutes * 60_000),
+                    gte: new Date(dateTime.getTime() - maximumDuration * 60000),
+                    lt: new Date(dateTime.getTime() + durationMinutes * 60000),
                 },
                 status: { in: ACTIVE_APPOINTMENT_STATUSES },
             },
@@ -152,7 +152,7 @@ let AppointmentSlotsService = class AppointmentSlotsService {
         if (!this.isBookableSlot(input.dateTime)) {
             throw new ConflictException(input.conflictMessage);
         }
-        const requestedEnd = new Date(input.dateTime.getTime() + input.durationMinutes * 60_000);
+        const requestedEnd = new Date(input.dateTime.getTime() + input.durationMinutes * 60000);
         const lockKeys = getCoveredDateKeys(input.dateTime, requestedEnd);
         return this.prisma.$transaction(async (transaction) => {
             // Always lock covered business dates in ascending order to avoid
@@ -169,7 +169,7 @@ let AppointmentSlotsService = class AppointmentSlotsService {
                         ? { not: input.excludeAppointmentId }
                         : undefined,
                     dateTime: {
-                        gte: new Date(input.dateTime.getTime() - maximumDuration * 60_000),
+                        gte: new Date(input.dateTime.getTime() - maximumDuration * 60000),
                         lt: requestedEnd,
                     },
                     status: { in: ACTIVE_APPOINTMENT_STATUSES },
