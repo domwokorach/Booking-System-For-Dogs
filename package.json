@@ -7,7 +7,7 @@
   "scripts": {
     "build": "pnpm run build:frontend && pnpm run build:backend",
     "build:frontend": "vite build",
-    "build:backend": "cd backend && pnpm run build",
+    "build:backend": "cd backend && pnpm run prisma:generate && pnpm run prisma:migrate:deploy && pnpm run build",
     "dev": "vite",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand"
   },
@@ -111,7 +111,8 @@
       "prisma"
     ],
     "overrides": {
-      "vite": "6.3.5"
+      "vite": "6.3.5",
+      "express": "4.21.2"
     }
   }
 }

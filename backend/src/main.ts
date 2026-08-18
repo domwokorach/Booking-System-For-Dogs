@@ -11,6 +11,7 @@ import { env } from "./config/env.js";
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
+    bodyParser: false,
   });
   configureNestApplication(app);
   if (!process.env.VERCEL) {
