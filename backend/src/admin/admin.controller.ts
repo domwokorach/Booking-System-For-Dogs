@@ -15,6 +15,12 @@ export class AdminController {
     return this.adminService.getCustomers();
   }
 
+  @Get('bookings')
+  @Roles('ADMIN', 'STAFF')
+  async getBookings() {
+    return this.adminService.getBookings();
+  }
+
   @Post('requests/:id/approve')
   @Roles('ADMIN', 'STAFF')
   async approveRequest(@Param('id') id: string) {

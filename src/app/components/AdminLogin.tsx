@@ -1,39 +1,45 @@
 import React, { useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { API_URL, setAdminSession, type AdminSession } from '@/lib/adminApi';
 
 export function AdminLogin({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    setSubmitting(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const response = await fetch(`${API_URL}/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
       });
+      const data = await response.json();
 
-      if (error) {
-        alert(error.message);
+      if (!response.ok) {
+        setError(data.message ?? 'Access denied: Admin or Staff role required.');
         return;
       }
 
-      // Check role in profiles table
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', data.user.id)
-        .single();
-
-      if (profileError || !['ADMIN', 'STAFF'].includes(profile?.role)) {
-        alert('Access denied: Admin or Staff role required');
-        await supabase.auth.signOut();
-        return;
-      }
-      
+      const session: AdminSession = {
+        accessToken: data.accessToken,
+        user: {
+          id: data.user.id,
+          firstName: data.user.firstName,
+          surname: data.user.surname,
+          email: data.user.email,
+          role: data.user.role,
+        },
+      };
+      setAdminSession(session);
       onLogin();
-    } catch (error) {
-      alert('An error occurred during login');
+    } catch {
+      setError('An error occurred during login.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -58,8 +64,13 @@ export function AdminLogin({ onLogin }: { onLogin: () => void }) {
             className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             required
           />
-          <button type="submit" className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
-            Login
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+          >
+            {submitting ? 'Signing in…' : 'Login'}
           </button>
         </form>
       </div>
