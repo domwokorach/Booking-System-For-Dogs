@@ -69,7 +69,7 @@ export function AdminDashboard() {
       setLoading(true);
       setError(null);
       try {
-        const response = await adminFetch('/admin/bookings');
+        const response = await adminFetch('/api/admin/bookings');
         if (!response.ok) {
           throw new Error(`Request failed with status ${response.status}`);
         }

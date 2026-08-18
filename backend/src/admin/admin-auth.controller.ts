@@ -2,7 +2,7 @@ import { Body, Controller, HttpException, HttpStatus, Post } from '@nestjs/commo
 import { AuthService } from '../auth/auth.service.js';
 import { loginSchema } from '../auth/dto/auth.schemas.js';
 
-@Controller('admin')
+@Controller('api/admin')
 export class AdminAuthController {
   constructor(private readonly authService: AuthService) {}
 
